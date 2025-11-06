@@ -242,53 +242,8 @@ st.markdown(
 )
 
 
-# ===== Scroll Snap Toggle =====
-enable_snap = st.toggle(
-    "Modo páginas al hacer scroll (scroll-snap)",
-    value=True,
-    help="Activa scroll por secciones: Configuración · Indicadores · Detalle SKU"
-)
-
-if enable_snap:
-    st.markdown(
-        """
-        <style>
-          /* Contenedor principal con scroll controlado */
-          #snap-root {
-            height: 100vh;
-            overflow-y: scroll;
-            scroll-snap-type: y mandatory;
-            scroll-behavior: smooth;
-          }
-
-          /* Cada sección ocupa toda la vista y se engancha al inicio */
-          .snap-section {
-            height: 100vh;
-            scroll-snap-align: start;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-          }
-
-          /* Evita doble scroll en body */
-          html, body {
-            height: 100%;
-            overflow: hidden;
-          }
-
-          /* El contenedor original de Streamlit queda sin restricciones */
-          main > div.block-container {
-            height: auto !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            margin: 0 auto;
-          }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# ===== Navegación por pestañas (reemplaza scroll-snap) =====
+tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle por SKU"])
 
 # Header visual
 hoy = today_ba()
@@ -298,11 +253,10 @@ header_html = f"""
   <div class=\"dx-sub\">Datos del mes en curso · Última actualización: {hoy.strftime('%Y-%m-%d')}</div>
 </div>
 """
-if enable_snap: st.markdown('<section class="snap-section" id="config">', unsafe_allow_html=True)
-if enable_snap:
-    st.markdown('<div id="snap-root">', unsafe_allow_html=True)
-    st.markdown('<section class="snap-section" id="config">', unsafe_allow_html=True)
-st.markdown(header_html, unsafe_allow_html=True)
+
+    
+with tab_config:
+    st.markdown(header_html, unsafe_allow_html=True)
 
 # ===== Configuración e inputs superiores =====
 col0, colActions = st.columns([1.8, .2])
@@ -333,7 +287,7 @@ objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 
 # Cierre sección 1 (configuración)
 if enable_snap:
-    st.markdown('</section>', unsafe_allow_html=True)
+    
     st.markdown('<!-- end-config -->', unsafe_allow_html=True)
 # ===== Carga de datos =====
 data = None
@@ -384,9 +338,10 @@ def progress_block(title, pct):
     </div>
     """).strip()
 
-# ====== SECCIÓN 2: INDICADORES ======
+with tab_kpi:
+    # ====== SECCIÓN 2: INDICADORES ======
 if enable_snap:
-    st.markdown('<section class="snap-section" id="indicadores">', unsafe_allow_html=True)
+    
 # ===== KPIs principales (fila 1) =====
 kpi_html = (
     '<div class="dx-grid">'
@@ -421,14 +376,15 @@ with c6:
 with c7:
     st.markdown(kpi_card("Margen bruto", f"$ {agg['margen_bruto_actual']:,.0f}".replace(",","."), icon="💹"), unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
+
 
 # Cierre sección 2 (indicadores)
-if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
+if enable_snap: 
 
 # ====== SECCIÓN 3: DETALLE SKU ======
-if enable_snap: st.markdown('<section class="snap-section" id="detalle">', unsafe_allow_html=True)
-# ===== Detalle por SKU (fila 3) =====
+if enable_snap: 
+with tab_detalle:
+    # ===== Detalle por SKU (fila 3) =====
 st.markdown('<div class="dx-section"><div class="dx-title">📦 Detalle por SKU (mes a hoy)</div>', unsafe_allow_html=True)
 left, right = st.columns(2)
 with left:
@@ -462,12 +418,12 @@ with right:
     else:
         st.caption("Sin ventas registradas en el mes.")
 
-st.markdown('</div>', unsafe_allow_html=True)
+
 
 # Cierre sección 3 (detalle)
 if enable_snap:
-    st.markdown('</section>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    
+    
 
 # ===== Notas =====
 with st.expander("🔧 Notas y supuestos"):
