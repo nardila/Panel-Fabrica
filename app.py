@@ -52,17 +52,30 @@ DRIVE_ID_REGEX = re.compile(r"(?:/d/|id=)([A-Za-z0-9_-]{10,})")
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_excel_bytes(drive_url: str) -> bytes:
+    """Descarga un Excel desde Drive o una Google Sheet exportada a .xlsx.
+    - Si el link es de Google Sheets (docs.google.com/spreadsheets), usa
+      `/spreadsheets/d/<ID>/export?format=xlsx` (no requiere API).
+    - Si es un archivo de Drive (file/d/<ID> o id=<ID>), usa `uc?export=download&id=`.
+    """
     if not drive_url:
         raise ValueError("Falta el enlace de Drive.")
+
     m = DRIVE_ID_REGEX.search(drive_url)
-    if m:
-        file_id = m.group(1)
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    else:
+    if not m:
         # Intento directo (por si ya es un enlace de descarga)
         url = drive_url
-    resp = requests.get(url, timeout=60)
-    resp.raise_for_status()
+    else:
+        file_id = m.group(1)
+        if SHEETS_HOST_RE.search(drive_url):
+            url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+        else:
+            url = f"https://drive.google.com/uc?export=download&id={file_id}"
+
+    resp = requests.get(url, timeout=90)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise RuntimeError(f"HTTP {resp.status_code} al descargar: {url}") from e
     return resp.content
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -172,9 +185,9 @@ st.title("📊 DX Fábrica – Panel de KPI")
 col0, col1 = st.columns([2, 1])
 with col0:
     default_url = st.secrets.get("DRIVE_FILE_URL", "") if hasattr(st, "secrets") else ""
-    drive_url = st.text_input("Enlace de Google Drive al Excel (se actualiza cada medianoche)", value=default_url, help="Pegá el enlace compartido del archivo .xlsx. Ej.: https://drive.google.com/file/d/FILE_ID/view?usp=sharing")
+    drive_url = st.text_input("Enlace de Google Drive al Excel/Sheet (se actualiza cada medianoche)", value=default_url, help="Pegá el enlace compartido del archivo .xlsx. Ej.: https://drive.google.com/file/d/FILE_ID/view?usp=sharing")
 with col1:
-    st.caption(":gray[Tip: podés guardar el enlace en **Secrets** de Streamlit Cloud como `DRIVE_FILE_URL`]")
+    st.caption(":gray[Tip: funciona con *Google Sheets* (`https://docs.google.com/spreadsheets/...`) **o** archivos Excel (`https://drive.google.com/file/d/...`). Podés guardar el enlace en **Secrets** como `DRIVE_FILE_URL`]")
 
 st.divider()
 
