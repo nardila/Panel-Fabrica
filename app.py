@@ -1,20 +1,18 @@
-# app.py – DX Fábrica – Panel KPI
-# -------------------------------
-# Streamlit app para monitorear KPI de producción, costos de mano de obra y márgenes.
-# Orígenes de datos: archivo Excel en Google Drive (se actualiza cada medianoche).
+# app_rediseño.py – DX Fábrica – Panel de KPI (Rediseño UI)
+# ---------------------------------------------------------
+# Streamlit app con soporte Google Sheets (export y API) y UI modernizada.
 # Despliegue sugerido: GitHub + Streamlit Cloud.
 #
-# Requisitos (requirements.txt):
+# requirements.txt recomendado:
 #   streamlit
 #   pandas
 #   numpy
 #   requests
 #   python-dateutil
 #   pytz
-#
-# Configuración: definir la variable DRIVE_FILE_URL (en st.secrets o input) con el enlace de Drive al Excel.
-#   - Se aceptan enlaces compartidos de Drive y enlaces directos de descarga.
-#   - Alternativamente, se puede subir el archivo manualmente con el uploader del panel.
+#   gspread
+#   google-auth
+#   openpyxl
 
 import io
 import re
@@ -41,12 +39,11 @@ def month_bounds(dt: date):
 
 
 def business_days_count(start: date, end: date):
-    # Lunes(0)–Viernes(4) como días hábiles; permite festivos opcionales (lista vacía por defecto)
-    bdays = np.busday_count(start, end + relativedelta(days=1))
-    return int(bdays)
+    # Lunes(0)–Viernes(4) como días hábiles
+    return int(np.busday_count(start, end + relativedelta(days=1)))
 
 # ---------------------------------
-# Descarga de archivo desde Google Drive
+# Descarga/lectura desde Google Drive / Google Sheets
 # ---------------------------------
 DRIVE_ID_REGEX = re.compile(r"(?:/d/|id=)([A-Za-z0-9_-]{10,})")
 SHEETS_HOST_RE = re.compile(r"docs\.google\.com/spreadsheets/")
@@ -63,8 +60,7 @@ def fetch_excel_bytes(drive_url: str) -> bytes:
 
     m = DRIVE_ID_REGEX.search(drive_url)
     if not m:
-        # Intento directo (por si ya es un enlace de descarga)
-        url = drive_url
+        url = drive_url  # Intento directo
     else:
         file_id = m.group(1)
         if SHEETS_HOST_RE.search(drive_url):
@@ -82,7 +78,6 @@ def fetch_excel_bytes(drive_url: str) -> bytes:
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_excel_bytes(xlsx_bytes: bytes):
     xls = pd.ExcelFile(io.BytesIO(xlsx_bytes))
-    # Nombres esperados de hojas (según el archivo entregado)
     h_mov = "MOVIMIENTO_STOCK-3934-1426"
     h_mat = "MATERIAL-4199-1426"
     h_rep = "REPORTE_DE_PEDIDOS-4166-1426"
@@ -132,7 +127,6 @@ def load_data_from_gsheets_api(drive_url: str):
 
     sh = client.open_by_key(spreadsheet_id)
 
-    # Nombres esperados
     h_mov = "MOVIMIENTO_STOCK-3934-1426"
     h_mat = "MATERIAL-4199-1426"
     h_rep = "REPORTE_DE_PEDIDOS-4166-1426"
@@ -160,12 +154,10 @@ def load_data_from_gsheets_api(drive_url: str):
     }
 
 # ---------------------------------
-# Cálculo de costos unitarios de mano de obra por SKU
+# Cálculos
 # ---------------------------------
 @st.cache_data(show_spinner=False, ttl=3600)
 def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> pd.DataFrame:
-    # df_material: columnas MATE_CODIGO (operación), MATE_CRM (costo)
-    # df_bom: MBOM_CODIGO (SKU), MATE_CODIGO (operación), DEBO_CANTIDAD (cantidad operación por unidad)
     mat = df_material.rename(columns={"MATE_CODIGO": "OPERACION", "MATE_CRM": "COSTO_OPERACION"})
     bom = df_bom.rename(columns={"MBOM_CODIGO": "SKU", "MATE_CODIGO": "OPERACION", "DEBO_CANTIDAD": "CANTIDAD_OP"})
 
@@ -177,9 +169,6 @@ def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> 
     unit_cost = merged.groupby("SKU", as_index=False)["COSTO_PARCIAL"].sum().rename(columns={"COSTO_PARCIAL": "COSTO_MO_UNIT"})
     return unit_cost
 
-# ---------------------------------
-# Agregados de producción y ventas (mes en curso, a día de hoy)
-# ---------------------------------
 
 def normalize_date_col(df: pd.DataFrame, col: str) -> pd.Series:
     s = pd.to_datetime(df[col], errors="coerce").dt.tz_localize(None)
@@ -187,7 +176,7 @@ def normalize_date_col(df: pd.DataFrame, col: str) -> pd.Series:
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cost: pd.DataFrame, today: date):
-    month_start, month_end = month_bounds(today)
+    month_start, _ = month_bounds(today)
 
     # Producción (MOVIMIENTO)
     mov = df_mov.rename(columns={
@@ -224,8 +213,6 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
     total_vendidos = int(ventas_with_cost["CANTIDAD"].sum()) if not ventas_with_cost.empty else 0
     costo_mo_recuperado = float(ventas_with_cost["COSTO_MO_RECUP"].sum()) if not ventas_with_cost.empty else 0.0
 
-    # Margen bruto actual (suma de MARGEN en el mes)
-    # Nota: En los datos de ejemplo CRM aparece negativo; aquí no se usa CRM para margen, solo columna MARGEN.
     margen_bruto_actual = float(rep_month["MARGEN"].sum()) if not rep_month.empty else 0.0
 
     return {
@@ -244,15 +231,31 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
 # UI
 # ---------------------------------
 st.set_page_config(page_title="DX Fábrica – KPI", page_icon="📊", layout="wide")
+
+# Estética mínima (opcional)
+st.markdown(
+    """
+    <style>
+    .block-container{padding-top:1rem;}
+    [data-testid="stMetricValue"]{font-size:2rem;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("📊 DX Fábrica – Panel de KPI")
 
-# Entrada de configuración: URL de Drive y costos fijos del mes
+# Entrada de configuración: URL y costos
 col0, col1 = st.columns([2, 1])
 with col0:
     default_url = st.secrets.get("DRIVE_FILE_URL", "") if hasattr(st, "secrets") else ""
-    drive_url = st.text_input("Enlace de Google Drive al Excel/Sheet (se actualiza cada medianoche)", value=default_url, help="Pegá el enlace compartido del archivo .xlsx. Ej.: https://drive.google.com/file/d/FILE_ID/view?usp=sharing")
+    drive_url = st.text_input(
+        "Enlace de Google Drive al Excel/Sheet (se actualiza cada medianoche)",
+        value=default_url,
+        help="Pegá el enlace de Google Sheets o del archivo .xlsx de Drive."
+    )
 with col1:
-    st.caption(":gray[Tip: funciona con *Google Sheets* (`https://docs.google.com/spreadsheets/...`) **o** archivos Excel (`https://drive.google.com/file/d/...`). Podés guardar el enlace en **Secrets** como `DRIVE_FILE_URL`]")
+    st.caption(":gray[Tip: funciona con *Google Sheets* (export o API) y con archivos Excel de Drive. Guardá el enlace en **Secrets** como `DRIVE_FILE_URL`]")
 
 st.divider()
 
@@ -278,11 +281,7 @@ objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 st.divider()
 
 # Carga del archivo
-use_api = st.toggle(
-    "Usar API de Google Sheets (service account)",
-    value=False,
-    help="Requiere configurar st.secrets['gcp_service_account'] y compartir la Sheet con ese mail."
-)
+use_api = st.toggle("Usar API de Google Sheets (service account)", value=False, help="Requiere st.secrets['gcp_service_account'] y compartir la Sheet con ese mail.")
 
 data = None
 err = None
@@ -313,50 +312,72 @@ if data is None:
 unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # Costo MO unitario por SKU
 agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
 
-# KPI principales
-k1, k2, k3, k4 = st.columns(4)
-with k1:
-    st.metric("Muebles fabricados (mes a hoy)", f"{agg['total_fabricados']:,}".replace(",","."))
-with k2:
-    st.metric("Costo MO fabricado (mes a hoy)", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."))
-with k3:
-    st.metric("Muebles vendidos (mes a hoy)", f"{agg['total_vendidos']:,}".replace(",","."))
-with k4:
-    st.metric("Costo MO recuperado por ventas (mes a hoy)", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."))
-
-k5, k6, k7 = st.columns(3)
-with k5:
-    st.metric("Objetivo diario MO", f"$ {objetivo_diario:,.2f}".replace(",","."))
-with k6:
-    st.metric("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."))
-with k7:
-    st.metric("Margen bruto actual (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."))
+# ====== REDISEÑO UI ======
+# 🔝 KPI principales (mes a hoy)
+st.subheader("🔝 KPI principales (mes a hoy)")
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    st.metric("Muebles fabricados", f"{agg['total_fabricados']:,}".replace(",","."))
+with c2:
+    st.metric("Costo MO fabricado", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."))
+with c3:
+    st.metric("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."))
+with c4:
+    st.metric("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."))
 
 st.divider()
 
-# Balanzas
+# 🎯 Objetivo y balanzas
+st.subheader("🎯 Objetivo y balanzas")
+
 bal_fabricado = agg["costo_mo_fabricado"] - objetivo_a_hoy
 bal_recuperado = agg["costo_mo_recuperado"] - objetivo_a_hoy
+pct_fabricado = 0.0 if objetivo_a_hoy == 0 else min(1.0, max(0.0, agg["costo_mo_fabricado"] / objetivo_a_hoy))
+pct_recuperado = 0.0 if objetivo_a_hoy == 0 else min(1.0, max(0.0, agg["costo_mo_recuperado"] / objetivo_a_hoy))
 
-b1, b2 = st.columns(2)
+b1, b2, b3, b4 = st.columns(4)
 with b1:
-    st.subheader("Balanza costo teórico vs fabricado")
-    st.metric("Diferencia", f"$ {bal_fabricado:,.2f}".replace(",","."), help="Positivo: por encima del objetivo. Negativo: por debajo.")
+    st.metric("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."))
 with b2:
-    st.subheader("Balanza costo teórico vs recuperado por venta")
-    st.metric("Diferencia", f"$ {bal_recuperado:,.2f}".replace(",","."), help="Positivo: por encima del objetivo. Negativo: por debajo.")
+    st.metric("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."))
+with b3:
+    st.metric("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."))
+with b4:
+    st.metric("Margen bruto actual (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."))
+
+p1, p2 = st.columns(2)
+with p1:
+    st.write("**Balanza: Fabricado vs objetivo**")
+    st.metric("Diferencia", f"$ {bal_fabricado:,.2f}".replace(",","."))
+    st.progress(pct_fabricado)
+with p2:
+    st.write("**Balanza: Recuperado vs objetivo**")
+    st.metric("Diferencia", f"$ {bal_recuperado:,.2f}".replace(",","."))
+    st.progress(pct_recuperado)
 
 st.divider()
 
-# Detalle por SKU – Producción y Ventas del mes
-st.subheader("Detalle por SKU (mes a hoy)")
+# 📦 Detalle por SKU (mes a hoy)
+st.subheader("📦 Detalle por SKU (mes a hoy)")
 left, right = st.columns(2)
 with left:
     st.write(":blue[Producción]")
     dfp = agg["prod_by_sku"].copy()
     if not dfp.empty:
         dfp = dfp.sort_values("COSTO_MO_TOTAL", ascending=False)
-        st.dataframe(dfp.rename(columns={"CANTIDAD": "Cantidad", "COSTO_MO_UNIT": "Costo MO Unit", "COSTO_MO_TOTAL": "Costo MO Total"}), use_container_width=True)
+        st.dataframe(
+            dfp.rename(columns={
+                "SKU": "SKU",
+                "CANTIDAD": "Cantidad",
+                "COSTO_MO_UNIT": "Costo MO unit.",
+                "COSTO_MO_TOTAL": "Costo MO total"
+            }),
+            use_container_width=True
+        )
+        try:
+            st.bar_chart(dfp.set_index("SKU")["COSTO_MO_TOTAL"].head(10))
+        except Exception:
+            pass
     else:
         st.caption("Sin producción registrada en el mes.")
 with right:
@@ -364,7 +385,19 @@ with right:
     dfv = agg["ventas_by_sku"].copy()
     if not dfv.empty:
         dfv = dfv.sort_values("COSTO_MO_RECUP", ascending=False)
-        st.dataframe(dfv.rename(columns={"CANTIDAD": "Cantidad", "COSTO_MO_UNIT": "Costo MO Unit", "COSTO_MO_RECUP": "Costo MO Recuperado"}), use_container_width=True)
+        st.dataframe(
+            dfv.rename(columns={
+                "SKU": "SKU",
+                "CANTIDAD": "Cantidad",
+                "COSTO_MO_UNIT": "Costo MO unit.",
+                "COSTO_MO_RECUP": "Costo MO recuperado"
+            }),
+            use_container_width=True
+        )
+        try:
+            st.bar_chart(dfv.set_index("SKU")["COSTO_MO_RECUP"].head(10))
+        except Exception:
+            pass
     else:
         st.caption("Sin ventas registradas en el mes.")
 
@@ -373,15 +406,16 @@ st.divider()
 with st.expander("🔧 Notas y supuestos"):
     st.markdown(
         """
-        - **Costo de mano de obra (MO) unitario**: se calcula combinando `DETALLE_BOM` (cantidades por operación) y `MATERIAL` (costo por operación).
-        - **MO fabricado** = Σ(cantidad fabricada por SKU × costo MO unitario del SKU) en el mes hasta hoy.
-        - **MO recuperado por ventas** = Σ(cantidad vendida por SKU × costo MO unitario del SKU) en el mes hasta hoy.
-        - **Objetivo teórico** = costo mensual / días hábiles del mes × días hábiles transcurridos.
-        - Los **días hábiles** se computan Lunes–Viernes (sin feriados); podés ajustar manualmente.
-        - `MARGEN_3` se suma tal cual para el **margen bruto actual** del mes.
-        - Si en tus datos el campo `CRM` (costo) viene negativo, no afecta los KPI de MO (se usa solo `MARGEN_3` para margen).
-        - El enlace de Drive puede guardarse como `DRIVE_FILE_URL` en *Secrets* de Streamlit Cloud.
+        - **Dos modos de lectura**:
+          1) Enlace de Google Sheets → exportación a Excel `.xlsx` (no requiere API).
+          2) API de Google Sheets (toggle) → requiere service account en `st.secrets['gcp_service_account']` y compartir la Sheet con ese email.
+        - **Costo de mano de obra (MO) unitario**: `DETALLE_BOM` + `MATERIAL`.
+        - **MO fabricado** = Σ(cantidad fabricada × costo MO unitario).
+        - **MO recuperado** = Σ(cantidad vendida × costo MO unitario).
+        - **Objetivo** = costo mensual / días hábiles × días hábiles transcurridos.
+        - **Días hábiles**: Lunes–Viernes (sin feriados) — ajustables manualmente.
+        - `MARGEN_3` se suma tal cual para el margen bruto del mes.
         """
     )
 
-st.success("Listo. El panel se recalcula cada vez que el Excel de Drive se actualiza.")
+st.success("UI rediseñada aplicada. Si querés, integro filtros extra (mes/año, top N, exportación PDF/CSV).")
