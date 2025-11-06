@@ -186,27 +186,72 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
 # ---------------------------------
 st.set_page_config(page_title="DX Fábrica – KPI", page_icon="📊", layout="wide")
 
-# CSS para look & feel
+# CSS para look & feel (versión mock‑up)
 st.markdown(
     """
     <style>
-    html, body, [class*=css]{ font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    .block-container{ padding-top: 1rem; max-width: 1320px; }
-    h1,h2,h3{ font-weight: 700; }
-    /* Cards / métricas */
-    [data-testid="stMetric"]{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:16px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-    [data-testid="stMetricValue"]{ font-size:2.2rem; color:#111827; }
-    [data-testid="stMetricLabel"]{ color:#4b5563; font-size:.95rem; }
-    /* Dataframes */
-    [data-testid="stDataFrame"]{ border-radius:12px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,.04); }
-    /* Progress custom */
-    .dx-progress {height:12px; background:#e5e7eb; border-radius:8px; overflow:hidden;}
-    .dx-progress > span{display:block; height:100%;}
-    .dx-green{background:#22c55e;} .dx-amber{background:#f59e0b;} .dx-red{background:#ef4444;}
+    :root{
+      --bg:#0b1020;          /* fondo de header */
+      --card:#ffffff;        /* fondo de tarjetas */
+      --muted:#6b7280;       /* gris texto secundario */
+      --ink:#111827;         /* gris oscuro texto */
+      --blue:#2563eb;        /* acento */
+      --green:#16a34a;       /* ok */
+      --amber:#f59e0b;       /* warn */
+      --red:#ef4444;         /* alert */
+      --border:#e5e7eb;
+    }
+
+    html, body, [class*="css"]{ font-family:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .block-container{ padding-top:0; max-width:1200px; }
+
+    /* ===== Top banner ===== */
+    .dx-header{
+      background:linear-gradient(90deg, var(--bg), #11193a);
+      color:white; padding:18px 22px; border-radius:0 0 18px 18px;
+      box-shadow:0 4px 16px rgba(0,0,0,.25); margin-bottom:20px;
+    }
+    .dx-header h1{margin:0;font-weight:800;letter-spacing:.2px}
+    .dx-sub{opacity:.85;font-size:13px;margin-top:6px}
+
+    /* ===== Card (KPI) ===== */
+    .dx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:8px}
+    @media (max-width:1200px){ .dx-grid{grid-template-columns:repeat(2,1fr);} }
+    @media (max-width:680px){ .dx-grid{grid-template-columns:1fr;} }
+
+    .dx-card{
+      background:var(--card); border:1px solid var(--border); border-radius:16px;
+      padding:18px; box-shadow:0 2px 10px rgba(0,0,0,.06);
+    }
+    .dx-label{color:var(--muted);font-size:13px;margin-bottom:6px;display:flex;gap:6px;align-items:center}
+    .dx-val{color:var(--ink);font-size:32px;font-weight:700;line-height:1.15;margin:0}
+    .dx-delta{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;margin-top:6px}
+    .dx-delta.pos{background:rgba(22,163,74,.12); color:var(--green); border:1px solid rgba(22,163,74,.35)}
+    .dx-delta.neg{background:rgba(239,68,68,.12); color:var(--red); border:1px solid rgba(239,68,68,.35)}
+
+    /* ===== Section card ===== */
+    .dx-section{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;margin:10px 0 18px 0;box-shadow:0 1px 6px rgba(0,0,0,.05)}
+    .dx-title{font-weight:800;font-size:18px;display:flex;gap:8px;align-items:center;margin:0 0 12px 0}
+
+    /* ===== Progress pill ===== */
+    .dx-progress{height:12px;background:#eef2ff;border-radius:10px;overflow:hidden}
+    .dx-progress > span{display:block;height:100%}
+    .dx-ok{background:#22c55e;} .dx-warn{background:#f59e0b;} .dx-bad{background:#ef4444;}
+
+    /* DataFrame contenedor */
+    [data-testid="stDataFrame"]{border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+# Header visual
+st.markdown(f"""
+<div class="dx-header">
+  <h1>DX Fábrica — Panel de KPI</h1>
+  <div class="dx-sub">Datos del mes en curso · Última actualización: {today_ba().strftime('%Y-%m-%d')}</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Header
 st.title("📊 DX Fábrica – Panel de KPI")
@@ -263,7 +308,35 @@ if data is None:
 unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
 agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
 
-# Helper progreso HTML con color
+# Helpers UI (cards y progreso estilo mock‑up)
+
+def kpi_card(label, value, icon="📦", delta=None, good=True):
+    delta_html = ""
+    if delta is not None:
+        cls = "pos" if good else "neg"
+        sign = "+" if (good and delta >= 0) or (not good and delta < 0) else ""
+        delta_html = f'<div class="dx-delta {cls}">{sign}{delta:,.1f}%</div>'.replace(",", ".")
+    return f"""
+    <div class="dx-card">
+      <div class="dx-label">{icon} {label}</div>
+      <div class="dx-val">{value}</div>
+      {delta_html}
+    </div>
+    """
+
+def progress_block(title, pct):
+    try:
+        pct = 0 if pct is None else max(0, min(1, float(pct)))
+    except Exception:
+        pct = 0
+    cls = 'dx-ok' if pct >= 1 else ('dx-warn' if pct >= .8 else 'dx-bad')
+    return f"""
+    <div style='margin-top:4px'>
+      <div class='dx-label' style='margin-bottom:6px;'>{title}</div>
+      <div class='dx-progress'><span class='{cls}' style='width:{pct*100:.1f}%'></span></div>
+      <div style='color:#6b7280;font-size:12px;margin-top:4px'>{pct*100:.1f}% del objetivo</div>
+    </div>
+    """ 
 def render_progress(label: str, pct: float):
     pct = 0.0 if np.isnan(pct) else max(0.0, min(1.0, pct))
     color = 'dx-green' if pct >= 1 else ('dx-amber' if pct >= 0.8 else 'dx-red')
@@ -274,90 +347,83 @@ def render_progress(label: str, pct: float):
     """, unsafe_allow_html=True)
 
 # ===== KPI Top =====
-st.subheader("📈 KPI principales (mes a hoy)")
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.metric("Muebles fabricados", f"{agg['total_fabricados']:,}".replace(",","."))
-with c2:
-    st.metric("Costo MO fabricado", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."))
-with c3:
-    st.metric("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."))
-with c4:
-    st.metric("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."))
+# ——— KPIs (similares al mock‑up)
+kpi_html = """
+<div class="dx-grid">
+  {c1}
+  {c2}
+  {c3}
+  {c4}
+</div>
+""".format(
+  c1 = kpi_card("Muebles fabricados", f"{agg['total_fabricados']:,}".replace(",","."), icon="🪑"),
+  c2 = kpi_card("Costo MO fabricado", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."), icon="🛠️"),
+  c3 = kpi_card("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."), icon="🧾"),
+  c4 = kpi_card("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."), icon="💵")
+)
+st.markdown(kpi_html, unsafe_allow_html=True)
 
 st.divider()
 
 # ===== Objetivo y balanzas =====
-st.subheader("🎯 Objetivo y balanzas")
-
-bal_fabricado = agg["costo_mo_fabricado"] - objetivo_a_hoy
-bal_recuperado = agg["costo_mo_recuperado"] - objetivo_a_hoy
-pct_fabricado = 0.0 if objetivo_a_hoy == 0 else agg["costo_mo_fabricado"] / objetivo_a_hoy
-pct_recuperado = 0.0 if objetivo_a_hoy == 0 else agg["costo_mo_recuperado"] / objetivo_a_hoy
+# ——— Objetivo y balanzas
+st.markdown('<div class="dx-section"><div class="dx-title">🎯 Objetivo y balanzas</div>', unsafe_allow_html=True)
 
 b1, b2, b3, b4 = st.columns(4)
-with b1:
-    st.metric("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."))
-with b2:
-    st.metric("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."))
-with b3:
-    st.metric("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."))
-with b4:
-    st.metric("Margen bruto actual (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."))
+with b1: st.markdown(kpi_card("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."), icon="🏭"), unsafe_allow_html=True)
+with b2: st.markdown(kpi_card("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."), icon="📅"), unsafe_allow_html=True)
+with b3: st.markdown(kpi_card("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."), icon="📈"), unsafe_allow_html=True)
+with b4: st.markdown(kpi_card("Margen bruto (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."), icon="💹"), unsafe_allow_html=True)
+
+bal_fabricado  = agg["costo_mo_fabricado"]  - objetivo_a_hoy
+bal_recuperado = agg["costo_mo_recuperado"] - objetivo_a_hoy
+pct_fabricado  = (agg["costo_mo_fabricado"]  / objetivo_a_hoy) if objetivo_a_hoy else 0
+pct_recuperado = (agg["costo_mo_recuperado"] / objetivo_a_hoy) if objetivo_a_hoy else 0
 
 c5, c6 = st.columns(2)
 with c5:
-    st.metric("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."))
-    render_progress("Avance vs objetivo (fabricado)", pct_fabricado)
+    st.markdown(kpi_card("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."), icon="⚙️", good=(bal_fabricado>=0)), unsafe_allow_html=True)
+    st.markdown(progress_block("Avance vs objetivo (fabricado)", pct_fabricado), unsafe_allow_html=True)
 with c6:
-    st.metric("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."))
-    render_progress("Avance vs objetivo (recuperado)", pct_recuperado)
+    st.markdown(kpi_card("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."), icon="💵", good=(bal_recuperado>=0)), unsafe_allow_html=True)
+    st.markdown(progress_block("Avance vs objetivo (recuperado)", pct_recuperado), unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
 # ===== Detalle por SKU =====
-st.subheader("📦 Detalle por SKU (mes a hoy)")
+# ——— Detalle por SKU (encapsulado en sección)
+st.markdown('<div class="dx-section"><div class="dx-title">📦 Detalle por SKU (mes a hoy)</div>', unsafe_allow_html=True)
 left, right = st.columns(2)
 with left:
-    st.write(":blue[Producción]")
+    st.caption("Producción")
     dfp = agg["prod_by_sku"].copy()
     if not dfp.empty:
         dfp = dfp.sort_values("COSTO_MO_TOTAL", ascending=False)
         st.dataframe(
-            dfp.rename(columns={
-                "SKU": "SKU",
-                "CANTIDAD": "Cantidad",
-                "COSTO_MO_UNIT": "Costo MO unit.",
-                "COSTO_MO_TOTAL": "Costo MO total"
-            }),
+            dfp.rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_TOTAL":"Costo MO total"}),
             use_container_width=True
         )
-        try:
-            st.bar_chart(dfp.set_index("SKU")["COSTO_MO_TOTAL"].head(10))
-        except Exception:
-            pass
+        try: st.bar_chart(dfp.set_index("SKU")["COSTO_MO_TOTAL"].head(10))
+        except: pass
     else:
         st.caption("Sin producción registrada en el mes.")
 with right:
-    st.write(":green[Ventas]")
+    st.caption("Ventas")
     dfv = agg["ventas_by_sku"].copy()
     if not dfv.empty:
         dfv = dfv.sort_values("COSTO_MO_RECUP", ascending=False)
         st.dataframe(
-            dfv.rename(columns={
-                "SKU": "SKU",
-                "CANTIDAD": "Cantidad",
-                "COSTO_MO_UNIT": "Costo MO unit.",
-                "COSTO_MO_RECUP": "Costo MO recuperado"
-            }),
+            dfv.rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_RECUP":"Costo MO recuperado"}),
             use_container_width=True
         )
-        try:
-            st.bar_chart(dfv.set_index("SKU")["COSTO_MO_RECUP"].head(10))
-        except Exception:
-            pass
+        try: st.bar_chart(dfv.set_index("SKU")["COSTO_MO_RECUP"].head(10))
+        except: pass
     else:
         st.caption("Sin ventas registradas en el mes.")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
