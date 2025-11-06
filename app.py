@@ -286,10 +286,7 @@ objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 
 
 # Cierre sección 1 (configuración)
-# enable_snap removed
-    
-    st.markdown('<!-- end-config -->', unsafe_allow_html=True)
-# ===== Carga de datos =====
+# enable_snap removed# ===== Carga de datos =====
 data = None
 if drive_url:
     try:
@@ -340,7 +337,6 @@ def progress_block(title, pct):
 
 with tab_kpi:
     # ====== SECCIÓN 2: INDICADORES ======
-# enable_snap removed
     
 # ===== KPIs principales (fila 1) =====
 kpi_html = (
@@ -421,7 +417,6 @@ with right:
 
 
 # Cierre sección 3 (detalle)
-# enable_snap removed
     
     
 
