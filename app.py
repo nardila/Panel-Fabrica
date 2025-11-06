@@ -245,18 +245,23 @@ st.markdown(
 # ===== Scroll Snap Toggle =====
 enable_snap = st.toggle("Modo páginas al hacer scroll (scroll-snap)", value=True, help="Activa scroll por secciones: Configuración · Indicadores · Detalle SKU")
 if enable_snap:
-    # Nuevo enfoque: el contenedor de scroll es el body, no el block-container.
     st.markdown("""
     <style>
-      html, body { height: 100%; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
-      /* Asegurar que el contenedor interno no intercepte el scroll */
-      main > div.block-container { height: auto !important; overflow: visible !important; }
-      /* Secciones a pantalla completa sin márgenes extra */
-      .snap-section { min-height: 100vh; scroll-snap-align: start; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; }
-      /* Elimina espacios verticales extra de nuestras tarjetas de sección */
+      /* El contenedor que realmente scrollea será un wrapper propio */
+      #snap-root { height: 100vh; overflow-y: auto; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+      .snap-section { min-height: 100vh; scroll-snap-align: start; margin: 0; padding: 8px 0 0; display:flex; flex-direction:column; }
+      /* Evitamos doble scroll en la ventana */
+      html, body { height: 100%; overflow: hidden; }
+      /* El contenedor de Streamlit queda estático y sin overflow */
+      main > div.block-container { height: auto !important; overflow: visible !important; padding-bottom: 0 !important; }
+      /* Secciones internas sin márgenes extra */
       .dx-section { margin: 0 !important; }
     </style>
     """, unsafe_allow_html=True)
+; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Header visual
 hoy = today_ba()
 header_html = f"""
@@ -266,6 +271,9 @@ header_html = f"""
 </div>
 """
 if enable_snap: st.markdown('<section class="snap-section" id="config">', unsafe_allow_html=True)
+if enable_snap:
+    st.markdown('<div id="snap-root">', unsafe_allow_html=True)
+    st.markdown('<section class="snap-section" id="config">', unsafe_allow_html=True)
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ===== Configuración e inputs superiores =====
@@ -289,14 +297,13 @@ with colB:
 with colC:
     dias_habiles_transc = st.number_input("Días hábiles transcurridos (hasta hoy)", min_value=0, max_value=int(dias_habiles_mes), value=int(business_days_count(mes_inicio, hoy)))
 with colD:
-    use_api = st.toggle("Usar API de Google Sheets (service account)", value=False, help="Requiere st.secrets['gcp_service_account'] y compartir la Sheet con ese mail.")
-
-objetivo_diario = (costo_mensual / dias_habiles_mes) if dias_habiles_mes else 0.0
-objetivo_a_hoy = objetivo_diario * dias_habiles_transc
+    use_api = st.toggle("Usar API de Google Sheets (service account)", value=False, help="Requiere st.secrets['gcp_service_account'] y compartir la Sheet con ese a_hoy = objetivo_diario * dias_habiles_transc
 
 
 # Cierre sección 1 (configuración)
-if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
+if enable_snap:
+    st.markdown('</section>', unsafe_allow_html=True)
+    st.markdown('<!-- end-config -->', unsafe_allow_html=True)
 # ===== Carga de datos =====
 data = None
 if drive_url:
@@ -342,12 +349,9 @@ def progress_block(title, pct):
     <div>
       <div class='dx-label' style='margin-bottom:6px;'>{title}</div>
       <div class='dx-progress'><span class='{cls}' style='width:{pct*100:.1f}%'></span></div>
-      <div style='color:#6b7280;font-size:12px;margin-top:4px'>{pct*100:.1f}% del objetivo</div>
-    </div>
-    """).strip()
-
-# ====== SECCIÓN 2: INDICADORES ======
-if enable_snap: st.markdown('<section class="snap-section" id="indicadores">', unsafe_allow_html=True)
+      <div DORES ======
+if enable_snap:
+    st.markdown('<section class="snap-section" id="indicadores">', unsafe_allow_html=True)
 # ===== KPIs principales (fila 1) =====
 kpi_html = (
     '<div class="dx-grid">'
@@ -384,12 +388,7 @@ with c7:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Cierre sección 2 (indicadores)
-if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
-
-# ====== SECCIÓN 3: DETALLE SKU ======
-if enable_snap: st.markdown('<section class="snap-section" id="detalle">', unsafe_allow_html=True)
-# ===== Detalle por SKU (fila 3) =====
+# Cierre sección 2 (inKU (fila 3) =====
 st.markdown('<div class="dx-section"><div class="dx-title">📦 Detalle por SKU (mes a hoy)</div>', unsafe_allow_html=True)
 left, right = st.columns(2)
 with left:
@@ -426,14 +425,15 @@ with right:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Cierre sección 3 (detalle)
-if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
+if enable_snap:
+    st.markdown('</section>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ===== Notas =====
 with st.expander("🔧 Notas y supuestos"):
     st.markdown(
         """
-        - **Dos modos de lectura**: exportación a `.xlsx` desde Google Sheets (sin API) o lectura directa por API (toggle).
-        - **MO unitario** por SKU = `DETALLE_BOM` × `MATERIAL` (sumatoria por operación).
+        - **Dos mo **MO unitario** por SKU = `DETALLE_BOM` × `MATERIAL` (sumatoria por operación).
         - **MO fabricado/recuperado** = Σ(cantidad × MO unitario) en el mes a hoy.
         - **Objetivo** = costo mensual / días hábiles × días hábiles transcurridos.
         - Barras de progreso: verde ≥100%, ámbar 80–99%, rojo <80% del objetivo.
