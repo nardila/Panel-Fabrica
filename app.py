@@ -286,7 +286,7 @@ objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 
 
 # Cierre sección 1 (configuración)
-if enable_snap:
+# enable_snap removed
     
     st.markdown('<!-- end-config -->', unsafe_allow_html=True)
 # ===== Carga de datos =====
@@ -340,7 +340,7 @@ def progress_block(title, pct):
 
 with tab_kpi:
     # ====== SECCIÓN 2: INDICADORES ======
-if enable_snap:
+# enable_snap removed
     
 # ===== KPIs principales (fila 1) =====
 kpi_html = (
@@ -379,10 +379,10 @@ with c7:
 
 
 # Cierre sección 2 (indicadores)
-if enable_snap: 
+# enable_snap removed 
 
 # ====== SECCIÓN 3: DETALLE SKU ======
-if enable_snap: 
+# enable_snap removed 
 with tab_detalle:
     # ===== Detalle por SKU (fila 3) =====
 st.markdown('<div class="dx-section"><div class="dx-title">📦 Detalle por SKU (mes a hoy)</div>', unsafe_allow_html=True)
@@ -421,7 +421,7 @@ with right:
 
 
 # Cierre sección 3 (detalle)
-if enable_snap:
+# enable_snap removed
     
     
 
