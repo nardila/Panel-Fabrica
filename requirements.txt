@@ -4,3 +4,6 @@ numpy
 requests
 python-dateutil
 pytz
+gspread
+google-auth
+
