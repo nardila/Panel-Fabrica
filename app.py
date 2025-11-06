@@ -9,7 +9,7 @@ import requests
 import numpy as np
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
+from textwrap import dedent
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from pytz import timezone
@@ -253,7 +253,7 @@ header_html = f"""
   <div class=\"dx-sub\">Datos del mes en curso · Última actualización: {today_ba().strftime('%Y-%m-%d')}</div>
 </div>
 """
-components.html(header_html, height=90, scrolling=False)
+st.markdown(header_html, unsafe_allow_html=True)
 
 # Header
 st.title("📊 DX Fábrica – Panel de KPI")
@@ -318,13 +318,13 @@ def kpi_card(label, value, icon="📦", delta=None, good=True):
         cls = "pos" if good else "neg"
         sign = "+" if (good and delta >= 0) or (not good and delta < 0) else ""
         delta_html = f'<div class="dx-delta {cls}">{sign}{delta:,.1f}%</div>'.replace(",", ".")
-    return f"""
-    <div class="dx-card">
-      <div class="dx-label">{icon} {label}</div>
-      <div class="dx-val">{value}</div>
+    return dedent(f"""
+    <div class=\"dx-card\">
+      <div class=\"dx-label\">{icon} {label}</div>
+      <div class=\"dx-val\">{value}</div>
       {delta_html}
     </div>
-    """
+    """).strip()
 
 def progress_block(title, pct):
     try:
@@ -332,13 +332,13 @@ def progress_block(title, pct):
     except Exception:
         pct = 0
     cls = 'dx-ok' if pct >= 1 else ('dx-warn' if pct >= .8 else 'dx-bad')
-    return f"""
-    <div style='margin-top:4px'>
+    return dedent(f"""
+    <div>
       <div class='dx-label' style='margin-bottom:6px;'>{title}</div>
       <div class='dx-progress'><span class='{cls}' style='width:{pct*100:.1f}%'></span></div>
       <div style='color:#6b7280;font-size:12px;margin-top:4px'>{pct*100:.1f}% del objetivo</div>
     </div>
-    """ 
+    """).strip() 
 def render_progress(label: str, pct: float):
     pct = 0.0 if np.isnan(pct) else max(0.0, min(1.0, pct))
     color = 'dx-green' if pct >= 1 else ('dx-amber' if pct >= 0.8 else 'dx-red')
@@ -350,20 +350,15 @@ def render_progress(label: str, pct: float):
 
 # ===== KPI Top =====
 # ——— KPIs (similares al mock‑up)
-kpi_html = """
-<div class="dx-grid">
-  {c1}
-  {c2}
-  {c3}
-  {c4}
-</div>
-""".format(
-  c1 = kpi_card("Muebles fabricados", f"{agg['total_fabricados']:,}".replace(",","."), icon="🪑"),
-  c2 = kpi_card("Costo MO fabricado", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."), icon="🛠️"),
-  c3 = kpi_card("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."), icon="🧾"),
-  c4 = kpi_card("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."), icon="💵")
+kpi_html = (
+    '<div class="dx-grid">'
+    + kpi_card("Muebles fabricados", f"{agg['total_fabricados']:,}".replace(",","."), icon="🪑")
+    + kpi_card("Costo MO fabricado", f"$ {agg['costo_mo_fabricado']:,.2f}".replace(",","."), icon="🛠️")
+    + kpi_card("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."), icon="🧾")
+    + kpi_card("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."), icon="💵")
+    + '</div>'
 )
-components.html(kpi_html, height=180, scrolling=False)
+st.markdown(kpi_html, unsafe_allow_html=True)
 
 st.divider()
 
@@ -372,10 +367,10 @@ st.divider()
 st.markdown('<div class="dx-section"><div class="dx-title">🎯 Objetivo y balanzas</div>', unsafe_allow_html=True)
 
 b1, b2, b3, b4 = st.columns(4)
-with b1: components.html(kpi_card("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."), icon="🏭"), height=120, scrolling=False)
-with b2: components.html(kpi_card("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."), icon="📅"), height=120, scrolling=False)
-with b3: components.html(kpi_card("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."), icon="📈"), height=120, scrolling=False)
-with b4: components.html(kpi_card("Margen bruto (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."), icon="💹"), height=120, scrolling=False)
+with b1: st.markdown(kpi_card("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."), icon="🏭"), unsafe_allow_html=True)
+with b2: st.markdown(kpi_card("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."), icon="📅"), unsafe_allow_html=True)
+with b3: st.markdown(kpi_card("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."), icon="📈"), unsafe_allow_html=True)
+with b4: st.markdown(kpi_card("Margen bruto (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."), icon="💹"), unsafe_allow_html=True)
 
 bal_fabricado  = agg["costo_mo_fabricado"]  - objetivo_a_hoy
 bal_recuperado = agg["costo_mo_recuperado"] - objetivo_a_hoy
@@ -384,11 +379,11 @@ pct_recuperado = (agg["costo_mo_recuperado"] / objetivo_a_hoy) if objetivo_a_hoy
 
 c5, c6 = st.columns(2)
 with c5:
-    components.html(kpi_card("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."), icon="⚙️", good=(bal_fabricado>=0)), height=120, scrolling=False)
-    components.html(progress_block("Avance vs objetivo (fabricado)", pct_fabricado), height=90, scrolling=False)
+    st.markdown(kpi_card("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."), icon="⚙️", good=(bal_fabricado>=0)), unsafe_allow_html=True)
+    st.markdown(progress_block("Avance vs objetivo (fabricado)", pct_fabricado), unsafe_allow_html=True)
 with c6:
-    components.html(kpi_card("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."), icon="💵", good=(bal_recuperado>=0)), height=120, scrolling=False)
-    components.html(progress_block("Avance vs objetivo (recuperado)", pct_recuperado), height=90, scrolling=False)
+    st.markdown(kpi_card("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."), icon="💵", good=(bal_recuperado>=0)), unsafe_allow_html=True)
+    st.markdown(progress_block("Avance vs objetivo (recuperado)", pct_recuperado), unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
