@@ -245,22 +245,16 @@ st.markdown(
 # ===== Scroll Snap Toggle =====
 enable_snap = st.toggle("Modo páginas al hacer scroll (scroll-snap)", value=True, help="Activa scroll por secciones: Configuración · Indicadores · Detalle SKU")
 if enable_snap:
+    # Nuevo enfoque: el contenedor de scroll es el body, no el block-container.
     st.markdown("""
     <style>
-      html, body { height: 100%; }
-      main > div.block-container {
-        height: 100vh;
-        overflow-y: auto;
-        scroll-snap-type: y mandatory;
-        scroll-behavior: smooth;
-        padding-bottom: 0 !important;
-      }
-      .snap-section {
-        min-height: 100vh;
-        scroll-snap-align: start;
-        padding-top: 10px;
-      }
-      body { overflow: hidden; }
+      html, body { height: 100%; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+      /* Asegurar que el contenedor interno no intercepte el scroll */
+      main > div.block-container { height: auto !important; overflow: visible !important; }
+      /* Secciones a pantalla completa sin márgenes extra */
+      .snap-section { min-height: 100vh; scroll-snap-align: start; margin: 0; padding: 8px 0 0; display: flex; flex-direction: column; }
+      /* Elimina espacios verticales extra de nuestras tarjetas de sección */
+      .dx-section { margin: 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 # Header visual
