@@ -241,6 +241,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# ===== Scroll Snap Toggle =====
+enable_snap = st.toggle("Modo páginas al hacer scroll (scroll-snap)", value=True, help="Activa scroll por secciones: Configuración · Indicadores · Detalle SKU")
+if enable_snap:
+    st.markdown("""
+    <style>
+      html, body { height: 100%; }
+      main > div.block-container {
+        height: 100vh;
+        overflow-y: auto;
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+        padding-bottom: 0 !important;
+      }
+      .snap-section {
+        min-height: 100vh;
+        scroll-snap-align: start;
+        padding-top: 10px;
+      }
+      body { overflow: hidden; }
+    </style>
+    """, unsafe_allow_html=True)
 # Header visual
 hoy = today_ba()
 header_html = f"""
@@ -249,6 +271,7 @@ header_html = f"""
   <div class=\"dx-sub\">Datos del mes en curso · Última actualización: {hoy.strftime('%Y-%m-%d')}</div>
 </div>
 """
+if enable_snap: st.markdown('<section class="snap-section" id="config">', unsafe_allow_html=True)
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ===== Configuración e inputs superiores =====
@@ -277,6 +300,9 @@ with colD:
 objetivo_diario = (costo_mensual / dias_habiles_mes) if dias_habiles_mes else 0.0
 objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 
+
+# Cierre sección 1 (configuración)
+if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
 # ===== Carga de datos =====
 data = None
 if drive_url:
@@ -326,6 +352,8 @@ def progress_block(title, pct):
     </div>
     """).strip()
 
+# ====== SECCIÓN 2: INDICADORES ======
+if enable_snap: st.markdown('<section class="snap-section" id="indicadores">', unsafe_allow_html=True)
 # ===== KPIs principales (fila 1) =====
 kpi_html = (
     '<div class="dx-grid">'
@@ -362,6 +390,11 @@ with c7:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+# Cierre sección 2 (indicadores)
+if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
+
+# ====== SECCIÓN 3: DETALLE SKU ======
+if enable_snap: st.markdown('<section class="snap-section" id="detalle">', unsafe_allow_html=True)
 # ===== Detalle por SKU (fila 3) =====
 st.markdown('<div class="dx-section"><div class="dx-title">📦 Detalle por SKU (mes a hoy)</div>', unsafe_allow_html=True)
 left, right = st.columns(2)
@@ -397,6 +430,9 @@ with right:
         st.caption("Sin ventas registradas en el mes.")
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# Cierre sección 3 (detalle)
+if enable_snap: st.markdown('</section>', unsafe_allow_html=True)
 
 # ===== Notas =====
 with st.expander("🔧 Notas y supuestos"):
