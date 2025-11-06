@@ -9,6 +9,7 @@ import requests
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from pytz import timezone
@@ -246,12 +247,13 @@ st.markdown(
 )
 
 # Header visual
-st.markdown(f"""
-<div class="dx-header">
+header_html = f"""
+<div class=\"dx-header\">
   <h1>DX Fábrica — Panel de KPI</h1>
-  <div class="dx-sub">Datos del mes en curso · Última actualización: {today_ba().strftime('%Y-%m-%d')}</div>
+  <div class=\"dx-sub\">Datos del mes en curso · Última actualización: {today_ba().strftime('%Y-%m-%d')}</div>
 </div>
-""", unsafe_allow_html=True)
+"""
+components.html(header_html, height=90, scrolling=False)
 
 # Header
 st.title("📊 DX Fábrica – Panel de KPI")
@@ -361,7 +363,7 @@ kpi_html = """
   c3 = kpi_card("Muebles vendidos", f"{agg['total_vendidos']:,}".replace(",","."), icon="🧾"),
   c4 = kpi_card("Costo MO recuperado", f"$ {agg['costo_mo_recuperado']:,.2f}".replace(",","."), icon="💵")
 )
-st.markdown(kpi_html, unsafe_allow_html=True)
+components.html(kpi_html, height=180, scrolling=False)
 
 st.divider()
 
@@ -370,10 +372,10 @@ st.divider()
 st.markdown('<div class="dx-section"><div class="dx-title">🎯 Objetivo y balanzas</div>', unsafe_allow_html=True)
 
 b1, b2, b3, b4 = st.columns(4)
-with b1: st.markdown(kpi_card("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."), icon="🏭"), unsafe_allow_html=True)
-with b2: st.markdown(kpi_card("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."), icon="📅"), unsafe_allow_html=True)
-with b3: st.markdown(kpi_card("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."), icon="📈"), unsafe_allow_html=True)
-with b4: st.markdown(kpi_card("Margen bruto (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."), icon="💹"), unsafe_allow_html=True)
+with b1: components.html(kpi_card("Costo mensual de fábrica", f"$ {costo_mensual:,.0f}".replace(",","."), icon="🏭"), height=120, scrolling=False)
+with b2: components.html(kpi_card("Objetivo diario", f"$ {objetivo_diario:,.2f}".replace(",","."), icon="📅"), height=120, scrolling=False)
+with b3: components.html(kpi_card("Objetivo acumulado a hoy", f"$ {objetivo_a_hoy:,.2f}".replace(",","."), icon="📈"), height=120, scrolling=False)
+with b4: components.html(kpi_card("Margen bruto (mes)", f"$ {agg['margen_bruto_actual']:,.2f}".replace(",","."), icon="💹"), height=120, scrolling=False)
 
 bal_fabricado  = agg["costo_mo_fabricado"]  - objetivo_a_hoy
 bal_recuperado = agg["costo_mo_recuperado"] - objetivo_a_hoy
@@ -382,11 +384,11 @@ pct_recuperado = (agg["costo_mo_recuperado"] / objetivo_a_hoy) if objetivo_a_hoy
 
 c5, c6 = st.columns(2)
 with c5:
-    st.markdown(kpi_card("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."), icon="⚙️", good=(bal_fabricado>=0)), unsafe_allow_html=True)
-    st.markdown(progress_block("Avance vs objetivo (fabricado)", pct_fabricado), unsafe_allow_html=True)
+    components.html(kpi_card("Balanza: Fabricado vs objetivo", f"$ {bal_fabricado:,.2f}".replace(",","."), icon="⚙️", good=(bal_fabricado>=0)), height=120, scrolling=False)
+    components.html(progress_block("Avance vs objetivo (fabricado)", pct_fabricado), height=90, scrolling=False)
 with c6:
-    st.markdown(kpi_card("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."), icon="💵", good=(bal_recuperado>=0)), unsafe_allow_html=True)
-    st.markdown(progress_block("Avance vs objetivo (recuperado)", pct_recuperado), unsafe_allow_html=True)
+    components.html(kpi_card("Balanza: Recuperado vs objetivo", f"$ {bal_recuperado:,.2f}".replace(",","."), icon="💵", good=(bal_recuperado>=0)), height=120, scrolling=False)
+    components.html(progress_block("Avance vs objetivo (recuperado)", pct_recuperado), height=90, scrolling=False)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
