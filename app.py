@@ -49,6 +49,7 @@ def business_days_count(start: date, end: date):
 # Descarga de archivo desde Google Drive
 # ---------------------------------
 DRIVE_ID_REGEX = re.compile(r"(?:/d/|id=)([A-Za-z0-9_-]{10,})")
+SHEETS_HOST_RE = re.compile(r"docs\.google\.com/spreadsheets/")
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_excel_bytes(drive_url: str) -> bytes:
@@ -93,6 +94,70 @@ def load_data_from_excel_bytes(xlsx_bytes: bytes):
     df_bom = pd.read_excel(xls, sheet_name=h_bom)
 
     return {"mov": df_mov, "mat": df_mat, "rep": df_rep, "bom": df_bom}
+
+# ---------------------------------
+# Lectura vía API de Google Sheets (opcional)
+# ---------------------------------
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    GSHEETS_AVAILABLE = True
+except Exception:
+    GSHEETS_AVAILABLE = False
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_data_from_gsheets_api(drive_url: str):
+    """Lee directamente la Google Sheet usando la API (requiere service account en st.secrets).
+    Secrets esperados:
+      - st.secrets["gcp_service_account"] -> dict con el JSON de la service account
+    Permisos: compartir la Sheet con el email de la service account como Lector.
+    """
+    if not GSHEETS_AVAILABLE:
+        raise RuntimeError("gspread/google-auth no están instalados.")
+
+    m = DRIVE_ID_REGEX.search(drive_url)
+    if not m:
+        raise ValueError("No se pudo extraer el ID de la Sheet del enlace.")
+    spreadsheet_id = m.group(1)
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+    ]
+    sa_info = st.secrets.get("gcp_service_account", None)
+    if not sa_info:
+        raise RuntimeError("Falta st.secrets['gcp_service_account'] con el JSON de la service account.")
+    creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
+    client = gspread.authorize(creds)
+
+    sh = client.open_by_key(spreadsheet_id)
+
+    # Nombres esperados
+    h_mov = "MOVIMIENTO_STOCK-3934-1426"
+    h_mat = "MATERIAL-4199-1426"
+    h_rep = "REPORTE_DE_PEDIDOS-4166-1426"
+    h_bom = "DETALLE_BOM-4200-1426"
+
+    def ws_to_df(name: str) -> pd.DataFrame:
+        ws = sh.worksheet(name)
+        values = ws.get_all_values()
+        if not values:
+            return pd.DataFrame()
+        header, rows = values[0], values[1:]
+        df = pd.DataFrame(rows, columns=header)
+        # Tipificación básica
+        for c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="ignore")
+            if df[c].dtype == object:
+                df[c] = pd.to_datetime(df[c], errors="ignore")
+        return df
+
+    return {
+        "mov": ws_to_df(h_mov),
+        "mat": ws_to_df(h_mat),
+        "rep": ws_to_df(h_rep),
+        "bom": ws_to_df(h_bom),
+    }
 
 # ---------------------------------
 # Cálculo de costos unitarios de mano de obra por SKU
@@ -213,15 +278,24 @@ objetivo_a_hoy = objetivo_diario * dias_habiles_transc
 st.divider()
 
 # Carga del archivo
+use_api = st.toggle(
+    "Usar API de Google Sheets (service account)",
+    value=False,
+    help="Requiere configurar st.secrets['gcp_service_account'] y compartir la Sheet con ese mail."
+)
+
 data = None
 err = None
 if drive_url:
     try:
-        xbytes = fetch_excel_bytes(drive_url)
-        data = load_data_from_excel_bytes(xbytes)
+        if use_api and SHEETS_HOST_RE.search(drive_url):
+            data = load_data_from_gsheets_api(drive_url)
+        else:
+            xbytes = fetch_excel_bytes(drive_url)
+            data = load_data_from_excel_bytes(xbytes)
     except Exception as e:
         err = str(e)
-        st.warning(f"No se pudo descargar el archivo desde Drive. Error: {err}")
+        st.warning(f"No se pudo obtener el archivo/Sheet. Error: {err}")
 
 if data is None:
     st.info("Como alternativa, subí el archivo .xlsx manualmente.")
