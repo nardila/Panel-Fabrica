@@ -114,13 +114,13 @@ st.markdown("""
   --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
 }
 /* ancho y respiración general */
-.block-container{ padding-top:.75rem; padding-bottom:0; max-width:1280px; }
+.block-container{ padding-top:.5rem; padding-bottom:0; max-width:1280px; }
 
 /* ===== HEADER (compacto ~20% del anterior) ===== */
-.dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:12px; padding:10px 16px; margin:0 0 12px 0; }
+.dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:10px; padding:4px 14px; margin:0 0 8px 0; }
 .dx-head-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
-.dx-title{ margin:0; line-height:1; font-weight:800; font-size:26px; }
-.dx-upd{ margin:0; font-size:12px; opacity:.9; white-space:nowrap; }
+.dx-title{ margin:0; line-height:1; font-weight:800; font-size:18px; }
+.dx-upd{ margin:0; font-size:10px; opacity:.9; white-space:nowrap; }
 
 /* ===== CONTENEDOR GENERAL CON BORDE ===== */
 .dx-shell{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
