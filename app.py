@@ -1,4 +1,4 @@
-# DX Fábrica – Panel de KPI (versión con estilo tipo mock-up)
+# DX Fábrica – Panel de KPI (versión completa con header compacto y contenedor con borde)
 
 import io
 import re
@@ -15,7 +15,7 @@ from pytz import timezone
 # ============================
 TZ = timezone("America/Argentina/Buenos_Aires")
 
-def today_ba():
+def today_ba() -> date:
     return datetime.now(TZ).date()
 
 def month_bounds(dt: date):
@@ -23,11 +23,11 @@ def month_bounds(dt: date):
     end = (start + relativedelta(months=1)) - relativedelta(days=1)
     return start, end
 
-def business_days_count(start: date, end: date):
+def business_days_count(start: date, end: date) -> int:
     return int(np.busday_count(start, end + relativedelta(days=1)))
 
 # ============================
-# Lectura de archivos
+# Lectura de archivos (Google Drive/Sheet por export)
 # ============================
 DRIVE_ID_REGEX = re.compile(r"(?:/d/|id=)([A-Za-z0-9_-]{10,})")
 SHEETS_HOST_RE = re.compile(r"docs\.google\.com/spreadsheets/")
@@ -60,24 +60,31 @@ def load_data_from_excel_bytes(xlsx_bytes: bytes):
 # ============================
 # Cálculos base
 # ============================
-def compute_unit_labor_cost(df_material, df_bom):
+
+def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> pd.DataFrame:
+    """Costo de mano de obra unitario por SKU = Σ(cant_op × costo_op)."""
     mat = df_material.rename(columns={"MATE_CODIGO": "OPERACION", "MATE_CRM": "COSTO_OPERACION"})
     bom = df_bom.rename(columns={"MBOM_CODIGO": "SKU", "MATE_CODIGO": "OPERACION", "DEBO_CANTIDAD": "CANTIDAD_OP"})
     merged = bom.merge(mat[["OPERACION", "COSTO_OPERACION"]], on="OPERACION", how="left")
     merged["COSTO_PARCIAL"] = merged["CANTIDAD_OP"].fillna(0) * merged["COSTO_OPERACION"].fillna(0)
     return merged.groupby("SKU", as_index=False)["COSTO_PARCIAL"].sum().rename(columns={"COSTO_PARCIAL": "COSTO_MO_UNIT"})
 
-def normalize_date_col(df, col):
+
+def normalize_date_col(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_datetime(df[col], errors="coerce").dt.tz_localize(None).dt.date
 
-def aggregate_current_month(df_mov, df_rep, unit_cost, today):
+
+def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cost: pd.DataFrame, today: date):
     month_start, _ = month_bounds(today)
+
+    # Producción
     mov = df_mov.rename(columns={"AUDI_FECHA_ALTA": "FECHA", "MATE_CODIGO": "SKU", "MOST_CANTIDAD": "CANTIDAD"}).copy()
     mov["FECHA"] = normalize_date_col(mov, "FECHA")
     mov_month = mov[(mov["FECHA"] >= month_start) & (mov["FECHA"] <= today)]
     prod = mov_month.groupby("SKU", as_index=False)["CANTIDAD"].sum().merge(unit_cost, on="SKU", how="left").fillna(0)
     prod["COSTO_MO_TOTAL"] = prod["CANTIDAD"] * prod["COSTO_MO_UNIT"]
 
+    # Ventas
     rep = df_rep.rename(columns={"AUDI_FECHA_ALTA": "FECHA", "SKU": "SKU", "CANTIDAD": "CANTIDAD", "MARGEN_3": "MARGEN"}).copy()
     rep["FECHA"] = normalize_date_col(rep, "FECHA")
     rep_month = rep[(rep["FECHA"] >= month_start) & (rep["FECHA"] <= today)]
@@ -99,37 +106,51 @@ def aggregate_current_month(df_mov, df_rep, unit_cost, today):
 # ============================
 st.set_page_config(page_title="DX Fábrica – KPI", layout="wide")
 
-# --- Estilos visuales ---
+# --- Estilos visuales (header 20% y shell con borde) ---
 st.markdown("""
 <style>
-:root {
-  --bg:#0b1020; --card:#fff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb;
+:root{
+  --bg:#0b1020; --card:#ffffff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb;
   --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
 }
-.block-container { padding-top: 0.5rem; padding-bottom: 0; max-width: 1280px; }
-.dx-header { background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; padding:16px 20px; border-radius:0 0 16px 16px; margin-bottom:12px; }
-.dx-header h1 { margin:0; font-weight:800; }
-.dx-sub { opacity:.85; font-size:13px; margin-top:6px }
-.dx-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; margin-top:4px }
-.dx-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-.dx-label { color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
-.dx-val { color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
-.dx-delta { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-top:6px }
-.dx-delta.pos { background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.35) }
-.dx-delta.neg { background:rgba(239,68,68,.12); color:var(--red); border:1px solid rgba(239,68,68,.35) }
+/* ancho y respiración general */
+.block-container{ padding-top:.75rem; padding-bottom:0; max-width:1280px; }
+
+/* ===== HEADER (compacto ~20% del anterior) ===== */
+.dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:12px; padding:10px 16px; margin:0 0 12px 0; }
+.dx-head-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+.dx-title{ margin:0; line-height:1; font-weight:800; font-size:26px; }
+.dx-upd{ margin:0; font-size:12px; opacity:.9; white-space:nowrap; }
+
+/* ===== CONTENEDOR GENERAL CON BORDE ===== */
+.dx-shell{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
+
+/* Tarjetas / grilla */
+.dx-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px }
+.dx-card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+.dx-label{ color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
+.dx-val{ color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
+
+/* DataFrames redondeados */
+[data-testid="stDataFrame"]{ border-radius:12px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,.04) }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header visual ---
+# --- Header ---
 hoy = today_ba()
 st.markdown(f"""
-<div class='dx-header'>
-  <h1>DX Fábrica — Panel de KPI</h1>
-  <div class='dx-sub'>Datos del mes en curso · Última actualización: {hoy}</div>
+<div class="dx-header">
+  <div class="dx-head-row">
+    <h1 class="dx-title">DX Fábrica — Panel de KPI</h1>
+    <p class="dx-upd">Datos del mes en curso · <b>Última actualización:</b> {hoy}</p>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-# --- Tabs principales ---
+# --- Shell con borde (envolvemos todo) ---
+st.markdown('<div class="dx-shell">', unsafe_allow_html=True)
+
+# --- Tabs ---
 tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle SKU"])
 
 with tab_config:
@@ -145,26 +166,32 @@ with tab_config:
     with c3:
         dias_trans = st.number_input("Días hábiles transcurridos", value=int(business_days_count(mes_ini, hoy)))
 
-    objetivo_diario = costo_mensual / dias_mes
+    objetivo_diario = (costo_mensual / dias_mes) if dias_mes else 0.0
     objetivo_a_hoy = objetivo_diario * dias_trans
 
-    st.session_state["cfg"] = dict(url=drive_url, costo=costo_mensual, dias_mes=dias_mes, dias_trans=dias_trans, obj_d=objetivo_diario, obj_h=objetivo_a_hoy)
+    # Intentamos cargar datos aquí para cachearlos
+    data = None
+    if drive_url:
+        try:
+            data = load_data_from_excel_bytes(fetch_excel_bytes(drive_url))
+            st.success("Datos cargados correctamente ✅")
+        except Exception as e:
+            st.error(f"No se pudo obtener el archivo/Sheet. Error: {e}")
+
+    st.session_state["cfg"] = dict(url=drive_url, costo=costo_mensual, dias_mes=dias_mes, dias_trans=dias_trans, obj_d=objetivo_diario, obj_h=objetivo_a_hoy, data=data, today=hoy)
 
 with tab_kpi:
-    cfg = st.session_state.get("cfg")
-    if not cfg or not cfg["url"]:
-        st.warning("Cargá primero los parámetros en Configuración.")
+    cfg = st.session_state.get("cfg", {})
+    data = cfg.get("data")
+    if not data:
+        st.info("Cargá primero los datos en la pestaña **Configuración**.")
         st.stop()
 
-    try:
-        data = load_data_from_excel_bytes(fetch_excel_bytes(cfg["url"]))
-        unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])
-        agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
-    except Exception as e:
-        st.error(f"Error cargando datos: {e}")
-        st.stop()
+    unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
+    agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
 
-    st.markdown(f"""
+    # Render de KPIs en grilla
+    kpi_html = f"""
     <div class='dx-grid'>
       <div class='dx-card'><div class='dx-label'>🪑 Muebles fabricados</div><div class='dx-val'>{agg['fabricados']:,}</div></div>
       <div class='dx-card'><div class='dx-label'>🛠️ Costo MO fabricado</div><div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div></div>
@@ -173,20 +200,24 @@ with tab_kpi:
     </div>
     <br>
     <div class='dx-card'><div class='dx-label'>💹 Margen bruto actual</div><div class='dx-val'>$ {agg['margen']:,.0f}</div></div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(kpi_html.replace(",", "."), unsafe_allow_html=True)
 
 with tab_detalle:
-    cfg = st.session_state.get("cfg")
-    if not cfg:
-        st.warning("Primero completá la configuración.")
+    cfg = st.session_state.get("cfg", {})
+    data = cfg.get("data")
+    if not data:
+        st.info("Cargá primero los datos en la pestaña **Configuración**.")
         st.stop()
 
-    data = load_data_from_excel_bytes(fetch_excel_bytes(cfg["url"]))
-    unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])
-    agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
+    unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
+    agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
 
     st.subheader("📦 Producción por SKU")
-    st.dataframe(agg["prod"].head(20))
+    st.dataframe(agg["prod"].rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_TOTAL":"Costo MO total"}))
 
     st.subheader("🧾 Ventas por SKU")
-    st.dataframe(agg["ventas"].head(20))
+    st.dataframe(agg["ventas"].rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_RECUP":"Costo MO recuperado"}))
+
+# --- Cerrar shell ---
+st.markdown('</div>', unsafe_allow_html=True)
