@@ -1,4 +1,4 @@
-# DX Fábrica – Panel de KPI (versión estable con pestañas)
+# DX Fábrica – Panel de KPI (versión con estilo tipo mock-up)
 
 import io
 import re
@@ -95,15 +95,41 @@ def aggregate_current_month(df_mov, df_rep, unit_cost, today):
     }
 
 # ============================
-# Interfaz Streamlit
+# Interfaz Streamlit con estilo
 # ============================
 st.set_page_config(page_title="DX Fábrica – KPI", layout="wide")
 
+# --- Estilos visuales ---
+st.markdown("""
+<style>
+:root {
+  --bg:#0b1020; --card:#fff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb;
+  --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
+}
+.block-container { padding-top: 0.5rem; padding-bottom: 0; max-width: 1280px; }
+.dx-header { background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; padding:16px 20px; border-radius:0 0 16px 16px; margin-bottom:12px; }
+.dx-header h1 { margin:0; font-weight:800; }
+.dx-sub { opacity:.85; font-size:13px; margin-top:6px }
+.dx-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; margin-top:4px }
+.dx-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+.dx-label { color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
+.dx-val { color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
+.dx-delta { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-top:6px }
+.dx-delta.pos { background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.35) }
+.dx-delta.neg { background:rgba(239,68,68,.12); color:var(--red); border:1px solid rgba(239,68,68,.35) }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Header visual ---
 hoy = today_ba()
-header = f"<h1 style='font-weight:800;margin-bottom:0'>📊 DX Fábrica – Panel de KPI</h1><p style='color:gray'>Actualizado: {hoy}</p>"
+st.markdown(f"""
+<div class='dx-header'>
+  <h1>DX Fábrica — Panel de KPI</h1>
+  <div class='dx-sub'>Datos del mes en curso · Última actualización: {hoy}</div>
+</div>
+""", unsafe_allow_html=True)
 
-st.markdown(header, unsafe_allow_html=True)
-
+# --- Tabs principales ---
 tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle SKU"])
 
 with tab_config:
@@ -138,11 +164,16 @@ with tab_kpi:
         st.error(f"Error cargando datos: {e}")
         st.stop()
 
-    st.metric("Muebles fabricados", f"{agg['fabricados']:,}".replace(",","."))
-    st.metric("Costo MO fabricado", f"$ {agg['costo_fabricado']:,.2f}".replace(",","."))
-    st.metric("Muebles vendidos", f"{agg['vendidos']:,}".replace(",","."))
-    st.metric("Costo MO recuperado", f"$ {agg['costo_recuperado']:,.2f}".replace(",","."))
-    st.metric("Margen bruto actual", f"$ {agg['margen']:,.2f}".replace(",","."))
+    st.markdown(f"""
+    <div class='dx-grid'>
+      <div class='dx-card'><div class='dx-label'>🪑 Muebles fabricados</div><div class='dx-val'>{agg['fabricados']:,}</div></div>
+      <div class='dx-card'><div class='dx-label'>🛠️ Costo MO fabricado</div><div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div></div>
+      <div class='dx-card'><div class='dx-label'>🧾 Muebles vendidos</div><div class='dx-val'>{agg['vendidos']:,}</div></div>
+      <div class='dx-card'><div class='dx-label'>💵 Costo MO recuperado</div><div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div></div>
+    </div>
+    <br>
+    <div class='dx-card'><div class='dx-label'>💹 Margen bruto actual</div><div class='dx-val'>$ {agg['margen']:,.0f}</div></div>
+    """, unsafe_allow_html=True)
 
 with tab_detalle:
     cfg = st.session_state.get("cfg")
@@ -154,8 +185,8 @@ with tab_detalle:
     unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])
     agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
 
-    st.subheader("Producción por SKU")
+    st.subheader("📦 Producción por SKU")
     st.dataframe(agg["prod"].head(20))
 
-    st.subheader("Ventas por SKU")
+    st.subheader("🧾 Ventas por SKU")
     st.dataframe(agg["ventas"].head(20))
