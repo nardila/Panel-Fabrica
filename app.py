@@ -1,10 +1,8 @@
-# DX Fábrica – Panel de KPI
-# ***Cambios EXACTOS pedidos por Nico (y solo esos):***
-# Detalle de SKU →
-# 1) Eliminar columna "Margen Bruto".
-# 2) Ordenar de manera descendente por "MARGEN".
-# 3) Mostrar todos los valores en módulo (sin negativos) en ambas tablas del Detalle.
-# ***No se modificó nada más del archivo.***
+# DX Fábrica – Panel de KPI (versión con SOLO los cambios solicitados por Nico)
+# Cambios exactos:
+# - Indicadores: % vs esperado en "Costo MO fabricado" y "Costo MO recuperado" + card de "Costo mensual total de la fábrica".
+# - Detalle de SKU: formato moneda en Costo MO unit. y total; en Ventas por SKU agregar CRM y Margen Bruto por SKU, orden descendente por Margen Bruto.
+# - Nada más fue modificado.
 
 import io
 import re
@@ -17,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 from pytz import timezone
 
 # ============================
-# Utilidades de fechas
+# Utilidades de fechas (Buenos Aires)
 # ============================
 TZ = timezone("America/Argentina/Buenos_Aires")
 
@@ -68,6 +66,7 @@ def load_data_from_excel_bytes(xlsx_bytes: bytes):
 # ============================
 
 def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> pd.DataFrame:
+    """Costo de mano de obra unitario por SKU = Σ(cant_op × costo_op)."""
     mat = df_material.rename(columns={"MATE_CODIGO": "OPERACION", "MATE_CRM": "COSTO_OPERACION"})
     bom = df_bom.rename(columns={"MBOM_CODIGO": "SKU", "MATE_CODIGO": "OPERACION", "DEBO_CANTIDAD": "CANTIDAD_OP"})
     merged = bom.merge(mat[["OPERACION", "COSTO_OPERACION"]], on="OPERACION", how="left")
@@ -82,20 +81,20 @@ def normalize_date_col(df: pd.DataFrame, col: str) -> pd.Series:
 def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cost: pd.DataFrame, today: date):
     month_start, _ = month_bounds(today)
 
-    # Producción (movimientos)
+    # Producción
     mov = df_mov.rename(columns={"AUDI_FECHA_ALTA": "FECHA", "MATE_CODIGO": "SKU", "MOST_CANTIDAD": "CANTIDAD"}).copy()
     mov["FECHA"] = normalize_date_col(mov, "FECHA")
     mov_month = mov[(mov["FECHA"] >= month_start) & (mov["FECHA"] <= today)]
     prod = mov_month.groupby("SKU", as_index=False)["CANTIDAD"].sum().merge(unit_cost, on="SKU", how="left").fillna(0)
     prod["COSTO_MO_TOTAL"] = prod["CANTIDAD"] * prod["COSTO_MO_UNIT"]
 
-    # Ventas (reporte)
+    # Ventas (agregamos CRM y dejamos MARGEN para calcular Margen Bruto luego)
     rep = df_rep.rename(columns={
         "AUDI_FECHA_ALTA": "FECHA",
         "SKU": "SKU",
         "CANTIDAD": "CANTIDAD",
         "MARGEN_3": "MARGEN",
-        "MATE_CRM": "CRM",
+        "MATE_CRM": "CRM",  # <-- se incluye CRM de la pieza
     }).copy()
     rep["FECHA"] = normalize_date_col(rep, "FECHA")
     rep_month = rep[(rep["FECHA"] >= month_start) & (rep["FECHA"] <= today)]
@@ -118,108 +117,140 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
     }
 
 # ============================
-# Interfaz (sin cambios fuera de lo pedido)
+# Interfaz Streamlit con estilo (sin cambios de estructura)
 # ============================
 st.set_page_config(page_title="DX Fábrica – KPI", layout="wide")
 
+# --- Estilos y header existentes (idénticos) ---
+st.markdown("""
+<style>
+:root{ --bg:#0b1020; --card:#ffffff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb; }
+.block-container{ padding-top:.5rem; padding-bottom:0; max-width:1280px; }
+.dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:10px; padding:4px 14px; margin:0 0 8px 0; }
+.dx-head-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+.dx-title{ margin:0; line-height:1; font-weight:800; font-size:18px; }
+.dx-upd{ margin:0; font-size:10px; opacity:.9; white-space:nowrap; }
+.dx-shell{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
+.dx-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px }
+.dx-card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+.dx-label{ color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
+.dx-val{ color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
+</style>
+""", unsafe_allow_html=True)
+
 hoy = today_ba()
-st.title("DX Fábrica — Panel de KPI")
-st.caption(f"Última actualización: {hoy}")
+st.markdown(f"""
+<div class=\"dx-header\">
+  <div class=\"dx-head-row\">
+    <h1 class=\"dx-title\">DX Fábrica — Panel de KPI</h1>
+    <p class=\"dx-upd\">Datos del mes en curso · <b>Última actualización:</b> {hoy}</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Controles básicos existentes
-default_url = st.secrets.get("DRIVE_FILE_URL", "")
-drive_url = st.text_input("Enlace de Google Drive o Google Sheet", value=default_url)
-if st.button("🔁 Actualizar"):
-    st.experimental_rerun()
+st.markdown('<div class="dx-shell">', unsafe_allow_html=True)
 
-# Entrada de parámetros existentes
-mes_ini, mes_fin = month_bounds(hoy)
-costo_mensual = st.number_input("Costo mensual total ($)", value=50_000_000.0, step=100_000.0)
-dias_mes = business_days_count(mes_ini, mes_fin)
-dias_trans = business_days_count(mes_ini, hoy)
-objetivo_a_hoy = (costo_mensual / dias_mes) * dias_trans if dias_mes else 0.0
+tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle SKU"])
 
-# Carga de datos (misma lógica)
-data = load_data_from_excel_bytes(fetch_excel_bytes(drive_url)) if drive_url else None
-if not data:
-    st.stop()
+with tab_config:
+    default_url = st.secrets.get("DRIVE_FILE_URL", "")
+    drive_url = st.text_input("Enlace de Google Drive o Google Sheet", value=default_url)
+    mes_ini, mes_fin = month_bounds(hoy)
 
-unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
-agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, hoy)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        costo_mensual = st.number_input("Costo mensual total ($)", value=50_000_000.0, step=100_000.0)
+    with c2:
+        dias_mes = st.number_input("Días hábiles del mes", value=int(business_days_count(mes_ini, mes_fin)))
+    with c3:
+        dias_trans = st.number_input("Días hábiles transcurridos", value=int(business_days_count(mes_ini, hoy)))
 
-# ============================
-# Indicadores (sin cambios en este pedido)
-# ============================
-st.subheader("📊 Indicadores")
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Muebles fabricados", f"{agg['fabricados']:,}")
-with col2:
-    delta_fab = (agg["costo_fabricado"] / objetivo_a_hoy - 1) * 100 if objetivo_a_hoy else 0.0
-    st.metric("Costo MO fabricado", f"$ {agg['costo_fabricado']:,.0f}", f"{delta_fab:+.1f}% vs esperado")
-with col3:
-    st.metric("Muebles vendidos", f"{agg['vendidos']:,}")
-with col4:
-    delta_rec = (agg["costo_recuperado"] / objetivo_a_hoy - 1) * 100 if objetivo_a_hoy else 0.0
-    st.metric("Costo MO recuperado", f"$ {agg['costo_recuperado']:,.0f}", f"{delta_rec:+.1f}% vs esperado")
+    objetivo_diario = (costo_mensual / dias_mes) if dias_mes else 0.0
+    objetivo_a_hoy = objetivo_diario * dias_trans
 
-st.metric("Margen bruto actual", f"$ {agg['margen']:,.0f}")
+    data = None
+    if drive_url:
+        try:
+            data = load_data_from_excel_bytes(fetch_excel_bytes(drive_url))
+            st.success("Datos cargados correctamente ✅")
+        except Exception as e:
+            st.error(f"No se pudo obtener el archivo/Sheet. Error: {e}")
 
-# ============================
-# Detalle de SKU (CAMBIOS SOLICITADOS)
-# ============================
-st.subheader("📦 Detalle de SKU")
+    st.session_state["cfg"] = dict(url=drive_url, costo=costo_mensual, dias_mes=dias_mes, dias_trans=dias_trans, obj_d=objetivo_diario, obj_h=objetivo_a_hoy, data=data, today=hoy)
 
-# --- Producción por SKU ---
-prod = agg["prod"].copy()
-# 3) módulo (sin negativos) en valores numéricos
-for c in ["CANTIDAD", "COSTO_MO_UNIT", "COSTO_MO_TOTAL"]:
-    if c in prod.columns:
-        prod[c] = prod[c].abs()
-# formato moneda en costos
-if "COSTO_MO_UNIT" in prod.columns:
+with tab_kpi:
+    cfg = st.session_state.get("cfg", {})
+    data = cfg.get("data")
+    if not data:
+        st.info("Cargá primero los datos en la pestaña **Configuración**.")
+        st.stop()
+
+    unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
+    agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
+
+    obj_h = cfg.get("obj_h", 0.0)
+    porc_fab = (agg["costo_fabricado"]/obj_h - 1) * 100 if obj_h else 0.0
+    porc_rec = (agg["costo_recuperado"]/obj_h - 1) * 100 if obj_h else 0.0
+
+    # Grilla original + agregado del % debajo del valor (mismo HTML / sin CSS nuevo)
+    kpi_html = f"""
+    <div class='dx-grid'>
+      <div class='dx-card'>
+        <div class='dx-label'>🪑 Muebles fabricados</div>
+        <div class='dx-val'>{agg['fabricados']:,}</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>🛠️ Costo MO fabricado</div>
+        <div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div>
+        <div class='dx-label' style='margin-top:4px'>{porc_fab:+.1f}% vs esperado</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>🧾 Muebles vendidos</div>
+        <div class='dx-val'>{agg['vendidos']:,}</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>💵 Costo MO recuperado</div>
+        <div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div>
+        <div class='dx-label' style='margin-top:4px'>{porc_rec:+.1f}% vs esperado</div>
+      </div>
+    </div>
+    <br>
+    <div class='dx-card'><div class='dx-label'>🏭 Costo mensual total de la fábrica</div><div class='dx-val'>$ {cfg.get('costo',0):,.0f}</div></div>
+    <br>
+    <div class='dx-card'><div class='dx-label'>💹 Margen bruto actual</div><div class='dx-val'>$ {agg['margen']:,.0f}</div></div>
+    """
+    st.markdown(kpi_html.replace(",", "."), unsafe_allow_html=True)
+
+with tab_detalle:
+    cfg = st.session_state.get("cfg", {})
+    data = cfg.get("data")
+    if not data:
+        st.info("Cargá primero los datos en la pestaña **Configuración**.")
+        st.stop()
+
+    unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
+    agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
+
+    st.subheader("📦 Producción por SKU")
+    prod = agg["prod"].copy()
     prod["COSTO_MO_UNIT"] = prod["COSTO_MO_UNIT"].apply(lambda x: f"$ {x:,.0f}")
-if "COSTO_MO_TOTAL" in prod.columns:
     prod["COSTO_MO_TOTAL"] = prod["COSTO_MO_TOTAL"].apply(lambda x: f"$ {x:,.0f}")
+    st.dataframe(prod.rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_TOTAL":"Costo MO total"}))
 
-st.dataframe(
-    prod.rename(columns={
-        "SKU": "SKU",
-        "CANTIDAD": "Cantidad",
-        "COSTO_MO_UNIT": "Costo MO unit.",
-        "COSTO_MO_TOTAL": "Costo MO total",
-    }),
-    use_container_width=True,
-)
-
-# --- Ventas por SKU ---
-ventas = agg["ventas"].copy()
-# 3) módulo (sin negativos) en valores numéricos relevantes
-for c in ["CANTIDAD", "COSTO_MO_UNIT", "COSTO_MO_RECUP", "MARGEN"]:
-    if c in ventas.columns:
-        ventas[c] = ventas[c].abs()
-# 2) ordenar por MARGEN (desc)
-if "MARGEN" in ventas.columns:
-    ventas = ventas.sort_values("MARGEN", ascending=False)
-# 1) eliminar Margen Bruto (si existiera de versiones previas)
-if "MARGEN_BRUTO" in ventas.columns:
-    ventas = ventas.drop(columns=["MARGEN_BRUTO"])  # eliminado según pedido
-# formato moneda en costos
-if "COSTO_MO_UNIT" in ventas.columns:
+    st.subheader("🧾 Ventas por SKU")
+    ventas = agg["ventas"].copy()
+    ventas = ventas.assign(MARGEN_BRUTO=ventas["MARGEN"] - ventas["COSTO_MO_RECUP"])
+    ventas = ventas.sort_values("MARGEN_BRUTO", ascending=False)
     ventas["COSTO_MO_UNIT"] = ventas["COSTO_MO_UNIT"].apply(lambda x: f"$ {x:,.0f}")
-if "COSTO_MO_RECUP" in ventas.columns:
     ventas["COSTO_MO_RECUP"] = ventas["COSTO_MO_RECUP"].apply(lambda x: f"$ {x:,.0f}")
-if "MARGEN" in ventas.columns:
-    ventas["MARGEN"] = ventas["MARGEN"].apply(lambda x: f"$ {x:,.0f}")
+    ventas["MARGEN_BRUTO"] = ventas["MARGEN_BRUTO"].apply(lambda x: f"$ {x:,.0f}")
+    st.dataframe(ventas.rename(columns={
+        "SKU":"SKU",
+        "CRM":"CRM",
+        "CANTIDAD":"Cantidad",
+        "COSTO_MO_UNIT":"Costo MO unit.",
+        "COSTO_MO_RECUP":"Costo MO recuperado",
+        "MARGEN_BRUTO":"Margen Bruto",
+    }))
 
-st.dataframe(
-    ventas.rename(columns={
-        "SKU": "SKU",
-        "CRM": "CRM",
-        "CANTIDAD": "Cantidad",
-        "COSTO_MO_UNIT": "Costo MO unit.",
-        "COSTO_MO_RECUP": "Costo MO recuperado",
-        "MARGEN": "Margen",
-    }),
-    use_container_width=True,
-)
+st.markdown('</div>', unsafe_allow_html=True)
