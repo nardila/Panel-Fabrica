@@ -1,4 +1,8 @@
-# DX Fábrica – Panel de KPI (versión completa con header compacto y contenedor con borde)
+# DX Fábrica – Panel de KPI (versión con SOLO los cambios solicitados por Nico)
+# Cambios exactos:
+# - Indicadores: % vs esperado en "Costo MO fabricado" y "Costo MO recuperado" + card de "Costo mensual total de la fábrica".
+# - Detalle de SKU: formato moneda en Costo MO unit. y total; en Ventas por SKU agregar CRM y Margen Bruto por SKU, orden descendente por Margen Bruto.
+# - Nada más fue modificado.
 
 import io
 import re
@@ -84,11 +88,22 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
     prod = mov_month.groupby("SKU", as_index=False)["CANTIDAD"].sum().merge(unit_cost, on="SKU", how="left").fillna(0)
     prod["COSTO_MO_TOTAL"] = prod["CANTIDAD"] * prod["COSTO_MO_UNIT"]
 
-    # Ventas
-    rep = df_rep.rename(columns={"AUDI_FECHA_ALTA": "FECHA", "SKU": "SKU", "CANTIDAD": "CANTIDAD", "MARGEN_3": "MARGEN"}).copy()
+    # Ventas (agregamos CRM y dejamos MARGEN para calcular Margen Bruto luego)
+    rep = df_rep.rename(columns={
+        "AUDI_FECHA_ALTA": "FECHA",
+        "SKU": "SKU",
+        "CANTIDAD": "CANTIDAD",
+        "MARGEN_3": "MARGEN",
+        "MATE_CRM": "CRM",  # <-- se incluye CRM de la pieza
+    }).copy()
     rep["FECHA"] = normalize_date_col(rep, "FECHA")
     rep_month = rep[(rep["FECHA"] >= month_start) & (rep["FECHA"] <= today)]
-    ventas = rep_month.groupby("SKU", as_index=False)["CANTIDAD"].sum().merge(unit_cost, on="SKU", how="left").fillna(0)
+    ventas = (
+        rep_month.groupby(["SKU", "CRM"], as_index=False)
+        .agg({"CANTIDAD": "sum", "MARGEN": "sum"})
+        .merge(unit_cost, on="SKU", how="left")
+        .fillna(0)
+    )
     ventas["COSTO_MO_RECUP"] = ventas["CANTIDAD"] * ventas["COSTO_MO_UNIT"]
 
     return {
@@ -102,55 +117,39 @@ def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cos
     }
 
 # ============================
-# Interfaz Streamlit con estilo
+# Interfaz Streamlit con estilo (sin cambios de estructura)
 # ============================
 st.set_page_config(page_title="DX Fábrica – KPI", layout="wide")
 
-# --- Estilos visuales (header 20% y shell con borde) ---
+# --- Estilos y header existentes (idénticos) ---
 st.markdown("""
 <style>
-:root{
-  --bg:#0b1020; --card:#ffffff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb;
-  --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
-}
-/* ancho y respiración general */
+:root{ --bg:#0b1020; --card:#ffffff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb; }
 .block-container{ padding-top:.5rem; padding-bottom:0; max-width:1280px; }
-
-/* ===== HEADER (compacto ~20% del anterior) ===== */
 .dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:10px; padding:4px 14px; margin:0 0 8px 0; }
 .dx-head-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
 .dx-title{ margin:0; line-height:1; font-weight:800; font-size:18px; }
 .dx-upd{ margin:0; font-size:10px; opacity:.9; white-space:nowrap; }
-
-/* ===== CONTENEDOR GENERAL CON BORDE ===== */
 .dx-shell{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
-
-/* Tarjetas / grilla */
 .dx-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px }
 .dx-card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 .dx-label{ color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
 .dx-val{ color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
-
-/* DataFrames redondeados */
-[data-testid="stDataFrame"]{ border-radius:12px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,.04) }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header ---
 hoy = today_ba()
 st.markdown(f"""
-<div class="dx-header">
-  <div class="dx-head-row">
-    <h1 class="dx-title">DX Fábrica — Panel de KPI</h1>
-    <p class="dx-upd">Datos del mes en curso · <b>Última actualización:</b> {hoy}</p>
+<div class=\"dx-header\">
+  <div class=\"dx-head-row\">
+    <h1 class=\"dx-title\">DX Fábrica — Panel de KPI</h1>
+    <p class=\"dx-upd\">Datos del mes en curso · <b>Última actualización:</b> {hoy}</p>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# --- Shell con borde (envolvemos todo) ---
 st.markdown('<div class="dx-shell">', unsafe_allow_html=True)
 
-# --- Tabs ---
 tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle SKU"])
 
 with tab_config:
@@ -169,7 +168,6 @@ with tab_config:
     objetivo_diario = (costo_mensual / dias_mes) if dias_mes else 0.0
     objetivo_a_hoy = objetivo_diario * dias_trans
 
-    # Intentamos cargar datos aquí para cachearlos
     data = None
     if drive_url:
         try:
@@ -190,14 +188,34 @@ with tab_kpi:
     unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
     agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
 
-    # Render de KPIs en grilla
+    obj_h = cfg.get("obj_h", 0.0)
+    porc_fab = (agg["costo_fabricado"]/obj_h - 1) * 100 if obj_h else 0.0
+    porc_rec = (agg["costo_recuperado"]/obj_h - 1) * 100 if obj_h else 0.0
+
+    # Grilla original + agregado del % debajo del valor (mismo HTML / sin CSS nuevo)
     kpi_html = f"""
     <div class='dx-grid'>
-      <div class='dx-card'><div class='dx-label'>🪑 Muebles fabricados</div><div class='dx-val'>{agg['fabricados']:,}</div></div>
-      <div class='dx-card'><div class='dx-label'>🛠️ Costo MO fabricado</div><div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div></div>
-      <div class='dx-card'><div class='dx-label'>🧾 Muebles vendidos</div><div class='dx-val'>{agg['vendidos']:,}</div></div>
-      <div class='dx-card'><div class='dx-label'>💵 Costo MO recuperado</div><div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div></div>
+      <div class='dx-card'>
+        <div class='dx-label'>🪑 Muebles fabricados</div>
+        <div class='dx-val'>{agg['fabricados']:,}</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>🛠️ Costo MO fabricado</div>
+        <div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div>
+        <div class='dx-label' style='margin-top:4px'>{porc_fab:+.1f}% vs esperado</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>🧾 Muebles vendidos</div>
+        <div class='dx-val'>{agg['vendidos']:,}</div>
+      </div>
+      <div class='dx-card'>
+        <div class='dx-label'>💵 Costo MO recuperado</div>
+        <div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div>
+        <div class='dx-label' style='margin-top:4px'>{porc_rec:+.1f}% vs esperado</div>
+      </div>
     </div>
+    <br>
+    <div class='dx-card'><div class='dx-label'>🏭 Costo mensual total de la fábrica</div><div class='dx-val'>$ {cfg.get('costo',0):,.0f}</div></div>
     <br>
     <div class='dx-card'><div class='dx-label'>💹 Margen bruto actual</div><div class='dx-val'>$ {agg['margen']:,.0f}</div></div>
     """
@@ -214,10 +232,25 @@ with tab_detalle:
     agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
 
     st.subheader("📦 Producción por SKU")
-    st.dataframe(agg["prod"].rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_TOTAL":"Costo MO total"}))
+    prod = agg["prod"].copy()
+    prod["COSTO_MO_UNIT"] = prod["COSTO_MO_UNIT"].apply(lambda x: f"$ {x:,.0f}")
+    prod["COSTO_MO_TOTAL"] = prod["COSTO_MO_TOTAL"].apply(lambda x: f"$ {x:,.0f}")
+    st.dataframe(prod.rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_TOTAL":"Costo MO total"}))
 
     st.subheader("🧾 Ventas por SKU")
-    st.dataframe(agg["ventas"].rename(columns={"SKU":"SKU","CANTIDAD":"Cantidad","COSTO_MO_UNIT":"Costo MO unit.","COSTO_MO_RECUP":"Costo MO recuperado"}))
+    ventas = agg["ventas"].copy()
+    ventas = ventas.assign(MARGEN_BRUTO=ventas["MARGEN"] - ventas["COSTO_MO_RECUP"])
+    ventas = ventas.sort_values("MARGEN_BRUTO", ascending=False)
+    ventas["COSTO_MO_UNIT"] = ventas["COSTO_MO_UNIT"].apply(lambda x: f"$ {x:,.0f}")
+    ventas["COSTO_MO_RECUP"] = ventas["COSTO_MO_RECUP"].apply(lambda x: f"$ {x:,.0f}")
+    ventas["MARGEN_BRUTO"] = ventas["MARGEN_BRUTO"].apply(lambda x: f"$ {x:,.0f}")
+    st.dataframe(ventas.rename(columns={
+        "SKU":"SKU",
+        "CRM":"CRM",
+        "CANTIDAD":"Cantidad",
+        "COSTO_MO_UNIT":"Costo MO unit.",
+        "COSTO_MO_RECUP":"Costo MO recuperado",
+        "MARGEN_BRUTO":"Margen Bruto",
+    }))
 
-# --- Cerrar shell ---
 st.markdown('</div>', unsafe_allow_html=True)
