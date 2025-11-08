@@ -1,8 +1,4 @@
-# NOTA: Cambios mínimos pedidos por Nico
-# 1) Cache/validaciones en lectura y cálculos
-# 2) Input de enlace de Drive + botón 🔁 debajo del header (fuera de expander/header)
-# 3) KPIs con barras de progreso + tarjeta verde de margen en la MISMA fila (grid 5 cols) 
-#    *Sin tocar otra cosa*
+# DX Fábrica – Panel de KPI (versión completa con header compacto y contenedor con borde)
 
 import io
 import re
@@ -36,7 +32,6 @@ def business_days_count(start: date, end: date) -> int:
 DRIVE_ID_REGEX = re.compile(r"(?:/d/|id=)([A-Za-z0-9_-]{10,})")
 SHEETS_HOST_RE = re.compile(r"docs\.google\.com/spreadsheets/")
 
-@st.cache_data(show_spinner=False, ttl=3600)
 def fetch_excel_bytes(drive_url: str) -> bytes:
     if not drive_url:
         raise ValueError("Falta el enlace de Drive/Sheet.")
@@ -53,7 +48,6 @@ def fetch_excel_bytes(drive_url: str) -> bytes:
     resp.raise_for_status()
     return resp.content
 
-@st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_excel_bytes(xlsx_bytes: bytes):
     xls = pd.ExcelFile(io.BytesIO(xlsx_bytes))
     return {
@@ -67,7 +61,6 @@ def load_data_from_excel_bytes(xlsx_bytes: bytes):
 # Cálculos base
 # ============================
 
-@st.cache_data(show_spinner=False, ttl=3600)
 def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> pd.DataFrame:
     """Costo de mano de obra unitario por SKU = Σ(cant_op × costo_op)."""
     mat = df_material.rename(columns={"MATE_CODIGO": "OPERACION", "MATE_CRM": "COSTO_OPERACION"})
@@ -80,7 +73,7 @@ def compute_unit_labor_cost(df_material: pd.DataFrame, df_bom: pd.DataFrame) -> 
 def normalize_date_col(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_datetime(df[col], errors="coerce").dt.tz_localize(None).dt.date
 
-@st.cache_data(show_spinner=False, ttl=1800)
+
 def aggregate_current_month(df_mov: pd.DataFrame, df_rep: pd.DataFrame, unit_cost: pd.DataFrame, today: date):
     month_start, _ = month_bounds(today)
 
@@ -120,19 +113,26 @@ st.markdown("""
   --bg:#0b1020; --card:#ffffff; --muted:#6b7280; --ink:#111827; --border:#e5e7eb;
   --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
 }
+/* ancho y respiración general */
 .block-container{ padding-top:.5rem; padding-bottom:0; max-width:1280px; }
+
+/* ===== HEADER (compacto ~20% del anterior) ===== */
 .dx-header{ background:linear-gradient(90deg, var(--bg), #11193a); color:#fff; border-radius:10px; padding:4px 14px; margin:0 0 8px 0; }
 .dx-head-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
 .dx-title{ margin:0; line-height:1; font-weight:800; font-size:18px; }
 .dx-upd{ margin:0; font-size:10px; opacity:.9; white-space:nowrap; }
+
+/* ===== CONTENEDOR GENERAL CON BORDE ===== */
 .dx-shell{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
+
+/* Tarjetas / grilla */
 .dx-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px }
 .dx-card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 .dx-label{ color:var(--muted); font-size:13px; margin-bottom:6px; display:flex; gap:6px; align-items:center }
 .dx-val{ color:var(--ink); font-size:26px; font-weight:700; line-height:1.15; margin:0 }
-.dx-progress{ height:9px; background:#eef2ff; border-radius:10px; overflow:hidden; margin-top:8px }
-.dx-progress span{ display:block; height:100%; background:#22c55e }
-.dx-card-green{ background:#22c55e; color:#fff; border:0; }
+
+/* DataFrames redondeados */
+[data-testid="stDataFrame"]{ border-radius:12px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,.04) }
 </style>
 """, unsafe_allow_html=True)
 
@@ -147,25 +147,6 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ===== Controles bajo el header (input Drive + refrescar) =====
-ctrl1, ctrl2 = st.columns([0.75, 0.25])
-with ctrl1:
-    drive_url_input = st.text_input(
-        "Enlace de Google Drive o Google Sheet",
-        value=st.session_state.get("drive_url", st.secrets.get("DRIVE_FILE_URL", "")),
-        key="drive_url_input",
-        help="Pegá un link de Google Sheet (se exporta a .xlsx) o un archivo .xlsx en Drive."
-    )
-with ctrl2:
-    if st.button("🔁 Actualizar", use_container_width=True):
-        fetch_excel_bytes.clear()
-        load_data_from_excel_bytes.clear()
-        aggregate_current_month.clear()
-        st.rerun()
-
-# Guardar para el resto de la app
-st.session_state["drive_url"] = drive_url_input
-
 # --- Shell con borde (envolvemos todo) ---
 st.markdown('<div class="dx-shell">', unsafe_allow_html=True)
 
@@ -173,7 +154,8 @@ st.markdown('<div class="dx-shell">', unsafe_allow_html=True)
 tab_config, tab_kpi, tab_detalle = st.tabs(["⚙️ Configuración", "📊 Indicadores", "📦 Detalle SKU"])
 
 with tab_config:
-    drive_url = st.session_state.get("drive_url", st.secrets.get("DRIVE_FILE_URL", ""))
+    default_url = st.secrets.get("DRIVE_FILE_URL", "")
+    drive_url = st.text_input("Enlace de Google Drive o Google Sheet", value=default_url)
     mes_ini, mes_fin = month_bounds(hoy)
 
     c1, c2, c3 = st.columns(3)
@@ -208,38 +190,16 @@ with tab_kpi:
     unit_cost = compute_unit_labor_cost(data["mat"], data["bom"])  # costo MO unitario por SKU
     agg = aggregate_current_month(data["mov"], data["rep"], unit_cost, cfg["today"])  # métricas del mes
 
-    # Progresos relativos (según objetivo a hoy si existe)
-    obj_h = st.session_state.get("cfg", {}).get("obj_h", 0.0)
-    pct_fab = (agg["costo_fabricado"]/obj_h*100) if obj_h else 0.0
-    pct_rec = (agg["costo_recuperado"]/obj_h*100) if obj_h else 0.0
-
+    # Render de KPIs en grilla
     kpi_html = f"""
-    <div class='dx-grid' style="grid-template-columns: repeat(5, 1fr);">
-      <div class='dx-card'>
-        <div class='dx-label'>🪑 Muebles fabricados <span class='dx-muted'>(mes a hoy)</span></div>
-        <div class='dx-val'>{agg['fabricados']:,}</div>
-        <div class='dx-progress'><span style='width:{min(100, pct_fab):.1f}%'></span></div>
-      </div>
-      <div class='dx-card'>
-        <div class='dx-label'>🛠️ Costo MO fabricado <span class='dx-muted'>(mes a hoy)</span></div>
-        <div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div>
-        <div class='dx-progress'><span style='width:{min(100, pct_fab):.1f}%'></span></div>
-      </div>
-      <div class='dx-card'>
-        <div class='dx-label'>🧾 Muebles vendidos <span class='dx-muted'>(mes a hoy)</span></div>
-        <div class='dx-val'>{agg['vendidos']:,}</div>
-        <div class='dx-progress'><span style='width:{min(100, pct_rec):.1f}%'></span></div>
-      </div>
-      <div class='dx-card'>
-        <div class='dx-label'>💵 Costo MO recuperado <span class='dx-muted'>(mes a hoy)</span></div>
-        <div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div>
-        <div class='dx-progress'><span style='width:{min(100, pct_rec):.1f}%'></span></div>
-      </div>
-      <div class='dx-card dx-card-green'>
-        <div class='dx-label'>💹 Margen bruto actual</div>
-        <div class='dx-val' style='font-size:24px'>$ {agg['margen']:,.0f}</div>
-      </div>
+    <div class='dx-grid'>
+      <div class='dx-card'><div class='dx-label'>🪑 Muebles fabricados</div><div class='dx-val'>{agg['fabricados']:,}</div></div>
+      <div class='dx-card'><div class='dx-label'>🛠️ Costo MO fabricado</div><div class='dx-val'>$ {agg['costo_fabricado']:,.0f}</div></div>
+      <div class='dx-card'><div class='dx-label'>🧾 Muebles vendidos</div><div class='dx-val'>{agg['vendidos']:,}</div></div>
+      <div class='dx-card'><div class='dx-label'>💵 Costo MO recuperado</div><div class='dx-val'>$ {agg['costo_recuperado']:,.0f}</div></div>
     </div>
+    <br>
+    <div class='dx-card'><div class='dx-label'>💹 Margen bruto actual</div><div class='dx-val'>$ {agg['margen']:,.0f}</div></div>
     """
     st.markdown(kpi_html.replace(",", "."), unsafe_allow_html=True)
 
